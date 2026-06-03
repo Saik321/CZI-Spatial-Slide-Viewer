@@ -1,0 +1,23 @@
+# Data & outputs
+/data/
+/outputs/
+/build/
+*.czi
+*.czis
+*.tif
+*.tiff
+*.svs
+*.ndpi
+*.vsi
+*.zarr
+
+# Gradle & IDE
+/.gradle/
+/.gradle-dist/
+/.jdk-dist/
+/.idea/
+*.iml
+
+# Logs & temp
+*.log
+*.tmp
