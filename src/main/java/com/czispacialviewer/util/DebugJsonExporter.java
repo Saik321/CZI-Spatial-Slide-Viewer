@@ -23,7 +23,7 @@ public class DebugJsonExporter {
 
     public static final Path DEFAULT_INPUT_PATH = Path.of(
             "data",
-            "Axio_4_100a_primary sci_sepsis_2025_03_10_032.czi");
+            "example_validation.czi");
     public static final Path OUTPUT_DIR = Path.of("outputs");
     public static final Path DEFAULT_MANIFEST_PATH = OUTPUT_DIR.resolve("czi_spatial_manifest.json");
     public static final Path DEFAULT_DEBUG_REPORT_PATH = OUTPUT_DIR.resolve("czi_debug_report.txt");
@@ -288,10 +288,25 @@ public class DebugJsonExporter {
 
     public static void main(String[] args) {
         try {
-            exportAll(DEFAULT_INPUT_PATH);
+            exportAll(resolveInputPath(args));
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
         }
+    }
+
+    public static Path resolveInputPath(String[] args) {
+        if (args != null && args.length > 0 && args[0] != null && !args[0].isBlank()) {
+            return Path.of(args[0]);
+        }
+        String propertyPath = System.getProperty("czi.input");
+        if (propertyPath != null && !propertyPath.isBlank()) {
+            return Path.of(propertyPath);
+        }
+        String envPath = System.getenv("CZI_SPATIAL_VIEWER_INPUT");
+        if (envPath != null && !envPath.isBlank()) {
+            return Path.of(envPath);
+        }
+        return DEFAULT_INPUT_PATH;
     }
 }

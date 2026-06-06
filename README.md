@@ -39,7 +39,7 @@ macOS/Linux:
 Use the all-in-one JAR:
 
 ```text
-build/libs/CZI-Spatial-Slide-Viewer-0.2.0-alpha-all.jar
+build/libs/CZI-Spatial-Slide-Viewer-0.2.1-alpha-all.jar
 ```
 
 The smaller non-`all` JAR is not recommended unless you manage dependencies yourself.
@@ -47,7 +47,7 @@ The smaller non-`all` JAR is not recommended unless you manage dependencies your
 ## Install In QuPath
 
 1. Build `shadowJar` or `build`.
-2. Drag `build/libs/CZI-Spatial-Slide-Viewer-0.2.0-alpha-all.jar` into QuPath.
+2. Drag `build/libs/CZI-Spatial-Slide-Viewer-0.2.1-alpha-all.jar` into QuPath.
 3. Restart QuPath if prompted.
 4. Use `Extensions > CZI Spatial Viewer`.
 
@@ -58,11 +58,11 @@ The smaller non-`all` JAR is not recommended unless you manage dependencies your
 - `Export Low-Resolution Layout Preview`
 - `Export Contact Sheet`
 - `Export Support Bundle`
-- `Run Debug Test on Sepsis CZI`
+- `Run Debug Test on Example CZI`
 - `Plugin Settings`
 - `About CZI Spatial Viewer`
 
-Opening and export commands now use a file picker and are not tied to the sepsis validation file.
+Opening and export commands use a file picker and are not tied to a specific validation file.
 
 ## Plugin Settings
 
@@ -70,18 +70,18 @@ Opening and export commands now use a file picker and are not tied to the sepsis
 
 ## Validation File
 
-The repository test file path remains:
+The optional local validation path is:
 
 ```text
-data/Axio_4_100a_primary sci_sepsis_2025_03_10_032.czi
+data/example_validation.czi
 ```
 
-CLI debug tasks use that file by default:
+Do not commit private or investigator-owned microscopy files. To run debug tasks on a local CZI without renaming it, pass `-PinputCzi`:
 
 ```powershell
-gradlew.bat exportCziDebug
-gradlew.bat exportCziRegionSmoke
-gradlew.bat exportCziSupportBundle
+gradlew.bat exportCziDebug -PinputCzi="C:\path\to\slide.czi"
+gradlew.bat exportCziRegionSmoke -PinputCzi="C:\path\to\slide.czi"
+gradlew.bat exportCziSupportBundle -PinputCzi="C:\path\to\slide.czi"
 ```
 
 ## Outputs
@@ -109,7 +109,7 @@ The layout preview is the strict spatial canvas: it preserves coordinate-derived
 - HALO-style preview placement for non-spatial label/macro items is inferred for visual comparison only; it is not used for QuPath measurements or annotations.
 - Settings are editable and persisted locally using Java preferences.
 - Thread safety uses synchronized Bio-Formats reader access rather than a reader pool.
-- Multichannel display uses Bio-Formats default `BufferedImage` conversion; advanced channel controls are future work.
+- Multichannel fluorescence display currently creates a default RGB composite from up to three channels. Full per-channel color/contrast controls are future work.
 - OpenSlide/libCZI backends are placeholders.
 
 ## Troubleshooting

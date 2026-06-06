@@ -31,22 +31,25 @@ gradlew.bat test
 
 ## Manual Real-File Tests
 
-Use:
+Use a local non-public validation file, for example:
 
 ```text
-data/Axio_4_100a_primary sci_sepsis_2025_03_10_032.czi
+data/example_validation.czi
 ```
 
 Checklist:
 
 - Build all-in-one JAR.
 - Install into QuPath 0.5.x.
-- Open the sepsis CZI with `Open CZI Spatial Slide`.
+- Open a spatial multi-scene CZI with `Open CZI Spatial Slide`.
+- Import a CZI into a QuPath project and verify CZI Spatial Viewer is selected as the server.
 - Confirm one global canvas appears.
 - Confirm blank gaps remain white.
 - Confirm far-left and far-right scenes show real pixels.
+- Confirm overlapping brightfield scene backgrounds do not visibly cover neighboring tissue when background transparency is enabled.
 - Zoom out and pan across multiple rows of tissue.
 - Zoom into at least three different scenes.
+- Open a fluorescence/multichannel CZI and verify the default RGB composite displays multiple channels rather than only a single plane.
 - Draw annotation on Scene 0.
 - Draw annotation on a far-right scene.
 - Draw annotation crossing a blank gap.
@@ -79,7 +82,7 @@ Checklist:
 This reads a real pixel region through the QuPath `ImageServer` path:
 
 ```powershell
-gradlew.bat exportCziRegionSmoke
+gradlew.bat exportCziRegionSmoke -PinputCzi="C:\path\to\slide.czi"
 ```
 
 Expected output:

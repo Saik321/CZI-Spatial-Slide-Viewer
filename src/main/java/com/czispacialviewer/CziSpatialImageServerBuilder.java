@@ -19,7 +19,7 @@ public class CziSpatialImageServerBuilder implements ImageServerBuilder<Buffered
             return UriImageSupport.createInstance(getClass(), 0f, Collections.emptyList());
         }
         var builder = new CziSpatialServerBuilder(uri, args, null);
-        return UriImageSupport.createInstance(getClass(), 3f, builder);
+        return UriImageSupport.createInstance(getClass(), 4.5f, builder);
     }
 
     @Override

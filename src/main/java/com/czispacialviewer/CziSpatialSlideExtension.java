@@ -7,7 +7,7 @@ import com.czispacialviewer.ui.ExportCziLayoutPreviewCommand;
 import com.czispacialviewer.ui.ExportSupportBundleCommand;
 import com.czispacialviewer.ui.OpenCziSpatialSlideCommand;
 import com.czispacialviewer.ui.PluginSettingsCommand;
-import com.czispacialviewer.ui.RunDebugSepsisCommand;
+import com.czispacialviewer.ui.RunDebugValidationCommand;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
@@ -41,8 +41,8 @@ public class CziSpatialSlideExtension implements QuPathExtension {
         MenuItem supportItem = new MenuItem("Export Support Bundle");
         supportItem.setOnAction(e -> new ExportSupportBundleCommand(qupath).run());
 
-        MenuItem debugSepsisItem = new MenuItem("Run Debug Test on Sepsis CZI");
-        debugSepsisItem.setOnAction(e -> new RunDebugSepsisCommand().run());
+        MenuItem debugValidationItem = new MenuItem("Run Debug Test on Example CZI");
+        debugValidationItem.setOnAction(e -> new RunDebugValidationCommand().run());
 
         MenuItem settingsItem = new MenuItem("Plugin Settings");
         settingsItem.setOnAction(e -> new PluginSettingsCommand().run());
@@ -51,7 +51,7 @@ public class CziSpatialSlideExtension implements QuPathExtension {
         aboutItem.setOnAction(e -> new AboutCziSpatialViewerCommand().run());
 
         cziMenu.getItems().setAll(openItem, manifestItem, previewItem, contactSheetItem,
-                supportItem, debugSepsisItem, settingsItem, aboutItem);
+                supportItem, debugValidationItem, settingsItem, aboutItem);
     }
 
     @Override

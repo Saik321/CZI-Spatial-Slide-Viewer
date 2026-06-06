@@ -122,7 +122,12 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
             String compression = scene.getCompression();
             if (compression != null && !"Uncompressed".equalsIgnoreCase(compression)) {
-                warnings.add("Unsupported compression for scene " + series + ": " + compression);
+                warnings.add("Non-uncompressed CZI compression reported for series " + series + ": " + compression
+                        + ". Pixel reading will be attempted through Bio-Formats.");
+            }
+            if (!scene.isRgb() && scene.getChannelCount() > 1) {
+                warnings.add("Multichannel non-RGB series " + series
+                        + " detected; default display composites up to three channels into RGB.");
             }
 
             int resolutionCount = reader.getResolutionCount();
@@ -198,8 +203,86 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
             // Some Bio-Formats readers expose pyramid levels as separate series only.
         }
 
-        BufferedImage image = bufferedImageReader.openImage(0, levelX, levelY, levelWidth, levelHeight);
+        BufferedImage image = readDisplayImage(scene, levelX, levelY, levelWidth, levelHeight);
         return new CziTileReadResult(image, x, y, levelDownsample);
+    }
+
+    private BufferedImage readDisplayImage(CziSceneInfo scene, int x, int y, int width, int height) throws FormatException, IOException {
+        if (reader.isRGB() || reader.getSizeC() <= 1) {
+            return bufferedImageReader.openImage(0, x, y, width, height);
+        }
+
+        int pixelType = reader.getPixelType();
+        if (pixelType != FormatTools.UINT8 && pixelType != FormatTools.UINT16) {
+            logger.warn("Falling back to Bio-Formats BufferedImage conversion for unsupported multichannel pixel type {}", scene.getPixelType());
+            return bufferedImageReader.openImage(0, x, y, width, height);
+        }
+
+        int channels = Math.min(3, reader.getSizeC());
+        byte[][] channelBytes = new byte[channels][];
+        for (int c = 0; c < channels; c++) {
+            int plane = reader.getIndex(0, c, 0);
+            channelBytes[c] = reader.openBytes(plane, x, y, width, height);
+        }
+        return composeChannels(channelBytes, width, height, pixelType, reader.getBitsPerPixel(), reader.isLittleEndian());
+    }
+
+    private BufferedImage composeChannels(byte[][] channelBytes, int width, int height, int pixelType, int bitsPerPixel, boolean littleEndian) {
+        int[][] scaledChannels = new int[channelBytes.length][];
+        for (int c = 0; c < channelBytes.length; c++) {
+            scaledChannels[c] = scaleChannelToByte(channelBytes[c], width * height, pixelType, bitsPerPixel, littleEndian);
+        }
+
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        for (int i = 0; i < width * height; i++) {
+            int r;
+            int g;
+            int b;
+            if (scaledChannels.length == 1) {
+                r = g = b = scaledChannels[0][i];
+            } else if (scaledChannels.length == 2) {
+                r = scaledChannels[0][i];
+                g = scaledChannels[1][i];
+                b = 0;
+            } else {
+                r = scaledChannels[0][i];
+                g = scaledChannels[1][i];
+                b = scaledChannels[2][i];
+            }
+            image.setRGB(i % width, i / width, (r << 16) | (g << 8) | b);
+        }
+        return image;
+    }
+
+    private int[] scaleChannelToByte(byte[] bytes, int pixelCount, int pixelType, int bitsPerPixel, boolean littleEndian) {
+        int bytesPerPixel = FormatTools.getBytesPerPixel(pixelType);
+        int maxValue = maxValueFor(pixelType, bitsPerPixel);
+        double scale = 255.0 / Math.max(1, maxValue);
+        int[] scaled = new int[pixelCount];
+
+        for (int i = 0; i < pixelCount; i++) {
+            int value;
+            if (bytesPerPixel == 1) {
+                value = bytes[i] & 0xff;
+            } else {
+                int offset = i * 2;
+                int b0 = bytes[offset] & 0xff;
+                int b1 = bytes[offset + 1] & 0xff;
+                value = littleEndian ? (b0 | (b1 << 8)) : ((b0 << 8) | b1);
+            }
+            scaled[i] = Math.max(0, Math.min(255, (int)Math.round(value * scale)));
+        }
+        return scaled;
+    }
+
+    private int maxValueFor(int pixelType, int bitsPerPixel) {
+        if (pixelType == FormatTools.UINT8) {
+            return 255;
+        }
+        if (bitsPerPixel > 0 && bitsPerPixel < 16) {
+            return (1 << bitsPerPixel) - 1;
+        }
+        return 65535;
     }
 
     @Override

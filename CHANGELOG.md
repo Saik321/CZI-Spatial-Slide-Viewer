@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1-alpha
+
+- Removed private validation slide filename from public docs, menu text, and debug defaults.
+- Added generic `data/example_validation.czi` debug default plus `-PinputCzi=...` task support.
+- Improved QuPath project import selection by increasing CZI Spatial Viewer server support priority for `.czi/.czis` files.
+- Improved default fluorescence/multichannel rendering by compositing non-RGB `UINT8`/`UINT16` channel planes into a stable RGB display.
+- Reworded CZI compression diagnostics to clarify that Bio-Formats pixel reading is attempted.
+
 ## 0.2.0-alpha
 
 - Added generic CZI file picker for QuPath open/export commands.
@@ -12,7 +20,7 @@
 - Added editable plugin settings dialog with persisted cache, preview, overlay, and compositing options.
 - Added optional light-background transparency while compositing overlapping brightfield scene rectangles.
 - Added explicit non-spatial/skipped series metadata in manifest/debug report.
-- Added `Export Contact Sheet` and `Run Debug Test on Sepsis CZI` menu items.
+- Added `Export Contact Sheet` and `Run Debug Test on Example CZI` menu items.
 - Added real thumbnail layout preview fallback behavior.
 - Added about menu placeholder.
 - Added leveled diagnostics in manifest/debug report.

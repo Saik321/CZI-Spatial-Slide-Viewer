@@ -31,7 +31,7 @@ public class DebugRegionSmokeExporter {
 
     public static void main(String[] args) {
         try {
-            exportSmokeRegion(DebugJsonExporter.DEFAULT_INPUT_PATH, DEFAULT_REGION_SMOKE_PATH);
+            exportSmokeRegion(DebugJsonExporter.resolveInputPath(args), DEFAULT_REGION_SMOKE_PATH);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);

@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.czispacialviewer'
-version = '0.2.0-alpha'
+version = '0.2.1-alpha'
 
 java {
     toolchain {
@@ -46,16 +46,22 @@ application {
 
 tasks.register('exportCziDebug', JavaExec) {
     group = 'czi'
-    description = 'Export CZI manifest, debug report, and layout preview using the default test file.'
+    description = 'Export CZI manifest, debug report, and layout preview. Pass -PinputCzi=path/to/file.czi.'
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.czispacialviewer.util.DebugJsonExporter'
+    if (project.hasProperty('inputCzi')) {
+        args project.property('inputCzi')
+    }
 }
 
 tasks.register('exportCziRegionSmoke', JavaExec) {
     group = 'czi'
-    description = 'Read one real pixel region through the QuPath ImageServer and export it as a smoke-test PNG.'
+    description = 'Read one real pixel region through the QuPath ImageServer and export it as a smoke-test PNG. Pass -PinputCzi=path/to/file.czi.'
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.czispacialviewer.util.DebugRegionSmokeExporter'
+    if (project.hasProperty('inputCzi')) {
+        args project.property('inputCzi')
+    }
 }
 
 tasks.register('exportCziSupportBundle', JavaExec) {
