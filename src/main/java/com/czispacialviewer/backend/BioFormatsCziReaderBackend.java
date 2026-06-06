@@ -6,6 +6,7 @@ import com.czispacialviewer.metadata.CziSeriesInfo;
 import com.czispacialviewer.metadata.CziSpatialMetadata;
 import com.czispacialviewer.metadata.CziTileInfo;
 import com.czispacialviewer.metadata.GlobalCoordinateMapper;
+import com.czispacialviewer.util.BandedImageTools;
 import loci.formats.FormatException;
 import loci.formats.FormatTools;
 import loci.formats.ImageReader;
@@ -19,6 +20,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBuffer;
+import java.awt.image.WritableRaster;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +31,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,9 +40,13 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
     private static final Logger logger = LoggerFactory.getLogger(BioFormatsCziReaderBackend.class);
     private static final Pattern FIRST_NUMBER = Pattern.compile("[-+]?\\d*\\.?\\d+(?:[Ee][-+]?\\d+)?");
+    private static final int MAX_READER_POOL_SIZE = 4;
 
     private ImageReader reader;
     private BufferedImageReader bufferedImageReader;
+    private final BlockingQueue<ReaderState> readerPool = new ArrayBlockingQueue<>(MAX_READER_POOL_SIZE);
+    private final Object readerPoolLock = new Object();
+    private int createdPooledReaders;
 
     @Override
     public String getName() {
@@ -87,6 +96,13 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
             scene.setPixelType(FormatTools.getPixelTypeString(reader.getPixelType()));
             scene.setRgb(reader.isRGB());
             scene.setInterleaved(reader.isInterleaved());
+            for (int channel = 0; channel < Math.max(1, reader.getSizeC()); channel++) {
+                String channelName = metadataStore.getChannelName(series, channel);
+                scene.getChannelNames().add(channelName == null || channelName.isBlank()
+                        ? "Channel " + (channel + 1)
+                        : channelName);
+                scene.getChannelColors().add(defaultChannelColor(channel));
+            }
             if (metadataStore.getImageAcquisitionDate(series) != null) {
                 scene.setAcquisitionDate(metadataStore.getImageAcquisitionDate(series).getValue());
             }
@@ -170,21 +186,16 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         allSeries.stream()
                 .filter(series -> !series.isSpatial())
                 .forEach(metadata.getNonSpatialSeries()::add);
+        applyRepresentativeImageMetadata(metadata, warnings);
         warnings.forEach(metadata::addWarning);
         new GlobalCoordinateMapper().apply(metadata);
         return metadata;
     }
 
     @Override
-    public synchronized CziTileReadResult readRegion(Path path, CziSceneInfo scene, int x, int y, int width, int height, double downsample) throws FormatException, IOException {
-        if (reader == null) {
-            IMetadata metadataStore = MetadataTools.createOMEXMLMetadata();
-            reader = new ImageReader();
-            reader.setMetadataStore(metadataStore);
-            reader.setId(path.toString());
-            bufferedImageReader = new BufferedImageReader(reader);
-        }
-
+    public CziTileReadResult readRegion(Path path, CziSceneInfo scene, int x, int y, int width, int height, double downsample) throws FormatException, IOException {
+        ReaderState state = borrowReader(path);
+        try {
         CziPyramidLevel level = selectPyramidLevel(scene, downsample);
         int sourceSeries = level.getSourceSeriesIndex() >= 0 ? level.getSourceSeriesIndex() : scene.getSeriesIndex();
         double levelDownsample = level.getDownsample() > 0 ? level.getDownsample() : 1.0;
@@ -196,71 +207,96 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         int levelWidth = Math.max(1, levelMaxX - levelX);
         int levelHeight = Math.max(1, levelMaxY - levelY);
 
-        reader.setSeries(sourceSeries);
+            state.reader().setSeries(sourceSeries);
         try {
-            reader.setResolution(0);
+                state.reader().setResolution(0);
         } catch (IllegalArgumentException ignored) {
             // Some Bio-Formats readers expose pyramid levels as separate series only.
         }
 
-        BufferedImage image = readDisplayImage(scene, levelX, levelY, levelWidth, levelHeight);
+            BufferedImage image = readDisplayImage(state, scene, levelX, levelY, levelWidth, levelHeight);
         return new CziTileReadResult(image, x, y, levelDownsample);
+        } finally {
+            releaseReader(state);
+        }
     }
 
-    private BufferedImage readDisplayImage(CziSceneInfo scene, int x, int y, int width, int height) throws FormatException, IOException {
-        if (reader.isRGB() || reader.getSizeC() <= 1) {
-            return bufferedImageReader.openImage(0, x, y, width, height);
+    private BufferedImage readDisplayImage(ReaderState state, CziSceneInfo scene, int x, int y, int width, int height) throws FormatException, IOException {
+        ImageReader activeReader = state.reader();
+        BufferedImageReader activeBufferedReader = state.bufferedImageReader();
+        if (activeReader.isRGB()) {
+            return activeBufferedReader.openImage(0, x, y, width, height);
         }
 
-        int pixelType = reader.getPixelType();
+        int pixelType = activeReader.getPixelType();
         if (pixelType != FormatTools.UINT8 && pixelType != FormatTools.UINT16) {
             logger.warn("Falling back to Bio-Formats BufferedImage conversion for unsupported multichannel pixel type {}", scene.getPixelType());
-            return bufferedImageReader.openImage(0, x, y, width, height);
+            return activeBufferedReader.openImage(0, x, y, width, height);
         }
 
-        int channels = Math.min(3, reader.getSizeC());
-        byte[][] channelBytes = new byte[channels][];
+        int channels = Math.max(1, activeReader.getSizeC());
+        int dataType = pixelType == FormatTools.UINT16 ? DataBuffer.TYPE_USHORT : DataBuffer.TYPE_BYTE;
+        BufferedImage image = BandedImageTools.createBandedImage(width, height, channels, dataType);
+        WritableRaster raster = image.getRaster();
         for (int c = 0; c < channels; c++) {
-            int plane = reader.getIndex(0, c, 0);
-            channelBytes[c] = reader.openBytes(plane, x, y, width, height);
-        }
-        return composeChannels(channelBytes, width, height, pixelType, reader.getBitsPerPixel(), reader.isLittleEndian());
-    }
-
-    private BufferedImage composeChannels(byte[][] channelBytes, int width, int height, int pixelType, int bitsPerPixel, boolean littleEndian) {
-        int[][] scaledChannels = new int[channelBytes.length][];
-        for (int c = 0; c < channelBytes.length; c++) {
-            scaledChannels[c] = scaleChannelToByte(channelBytes[c], width * height, pixelType, bitsPerPixel, littleEndian);
-        }
-
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        for (int i = 0; i < width * height; i++) {
-            int r;
-            int g;
-            int b;
-            if (scaledChannels.length == 1) {
-                r = g = b = scaledChannels[0][i];
-            } else if (scaledChannels.length == 2) {
-                r = scaledChannels[0][i];
-                g = scaledChannels[1][i];
-                b = 0;
-            } else {
-                r = scaledChannels[0][i];
-                g = scaledChannels[1][i];
-                b = scaledChannels[2][i];
-            }
-            image.setRGB(i % width, i / width, (r << 16) | (g << 8) | b);
+            int plane = activeReader.getIndex(0, c, 0);
+            copyChannelBytes(activeReader.openBytes(plane, x, y, width, height), raster, c, width, height, pixelType, activeReader.isLittleEndian());
         }
         return image;
     }
 
-    private int[] scaleChannelToByte(byte[] bytes, int pixelCount, int pixelType, int bitsPerPixel, boolean littleEndian) {
-        int bytesPerPixel = FormatTools.getBytesPerPixel(pixelType);
-        int maxValue = maxValueFor(pixelType, bitsPerPixel);
-        double scale = 255.0 / Math.max(1, maxValue);
-        int[] scaled = new int[pixelCount];
+    private ReaderState borrowReader(Path path) throws FormatException, IOException {
+        ReaderState state = readerPool.poll();
+        if (state != null) {
+            return state;
+        }
+        synchronized (readerPoolLock) {
+            if (createdPooledReaders < MAX_READER_POOL_SIZE) {
+                createdPooledReaders++;
+                try {
+                    return openReader(path);
+                } catch (FormatException | IOException e) {
+                    createdPooledReaders--;
+                    throw e;
+                }
+            }
+        }
+        try {
+            return readerPool.take();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while waiting for an available Bio-Formats reader.", e);
+        }
+    }
 
-        for (int i = 0; i < pixelCount; i++) {
+    private ReaderState openReader(Path path) throws FormatException, IOException {
+        IMetadata metadataStore = MetadataTools.createOMEXMLMetadata();
+        ImageReader imageReader = new ImageReader();
+        imageReader.setMetadataStore(metadataStore);
+        imageReader.setId(path.toString());
+        return new ReaderState(imageReader, new BufferedImageReader(imageReader));
+    }
+
+    private void releaseReader(ReaderState state) throws IOException {
+        if (state == null) {
+            return;
+        }
+        if (!readerPool.offer(state)) {
+            try {
+                state.reader().close();
+            } finally {
+                synchronized (readerPoolLock) {
+                    createdPooledReaders--;
+                }
+            }
+        }
+    }
+
+    private void copyChannelBytes(byte[] bytes, WritableRaster raster, int channel, int width, int height, int pixelType, boolean littleEndian) {
+        int bytesPerPixel = FormatTools.getBytesPerPixel(pixelType);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int i = y * width + x;
             int value;
             if (bytesPerPixel == 1) {
                 value = bytes[i] & 0xff;
@@ -270,25 +306,19 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
                 int b1 = bytes[offset + 1] & 0xff;
                 value = littleEndian ? (b0 | (b1 << 8)) : ((b0 << 8) | b1);
             }
-            scaled[i] = Math.max(0, Math.min(255, (int)Math.round(value * scale)));
+                raster.setSample(x, y, channel, value);
         }
-        return scaled;
-    }
-
-    private int maxValueFor(int pixelType, int bitsPerPixel) {
-        if (pixelType == FormatTools.UINT8) {
-            return 255;
         }
-        if (bitsPerPixel > 0 && bitsPerPixel < 16) {
-            return (1 << bitsPerPixel) - 1;
-        }
-        return 65535;
     }
 
     @Override
     public void close() throws Exception {
         if (reader != null) {
             reader.close();
+        }
+        ReaderState state;
+        while ((state = readerPool.poll()) != null) {
+            state.reader().close();
         }
     }
 
@@ -445,6 +475,43 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         return series;
     }
 
+    private void applyRepresentativeImageMetadata(CziSpatialMetadata metadata, List<String> warnings) {
+        if (metadata.getScenes().isEmpty()) {
+            metadata.setRgb(true);
+            metadata.setPixelType("uint8");
+            metadata.setChannelCount(3);
+            metadata.getChannelNames().addAll(List.of("Red", "Green", "Blue"));
+            metadata.getChannelColors().addAll(List.of(defaultChannelColor(0), defaultChannelColor(1), defaultChannelColor(2)));
+            return;
+        }
+
+        CziSceneInfo representative = metadata.getScenes().get(0);
+        metadata.setRgb(representative.isRgb());
+        metadata.setPixelType(representative.getPixelType());
+        metadata.setChannelCount(Math.max(1, representative.getChannelCount()));
+        metadata.getChannelNames().clear();
+        metadata.getChannelColors().clear();
+        if (representative.getChannelNames().isEmpty()) {
+            for (int i = 0; i < metadata.getChannelCount(); i++) {
+                metadata.getChannelNames().add(metadata.isRgb() && i < 3 ? List.of("Red", "Green", "Blue").get(i) : "Channel " + (i + 1));
+                metadata.getChannelColors().add(defaultChannelColor(i));
+            }
+        } else {
+            metadata.getChannelNames().addAll(representative.getChannelNames());
+            metadata.getChannelColors().addAll(representative.getChannelColors());
+        }
+
+        for (CziSceneInfo scene : metadata.getScenes()) {
+            if (scene.isRgb() != representative.isRgb()
+                    || scene.getChannelCount() != representative.getChannelCount()
+                    || !String.valueOf(scene.getPixelType()).equals(String.valueOf(representative.getPixelType()))) {
+                warnings.add("Mixed image types detected across spatial scenes; QuPath metadata uses scene "
+                        + representative.getSceneIndex() + " as the representative display model.");
+                break;
+            }
+        }
+    }
+
     private String classifySeries(CziSceneInfo scene, boolean hasSpatialCoordinates) {
         String name = scene.getSeriesName() == null ? "" : scene.getSeriesName().toLowerCase(Locale.ROOT);
         String combined = name + " " + scene.getRawMetadata().keySet().toString().toLowerCase(Locale.ROOT);
@@ -488,8 +555,21 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         scene.setStageYMicrons(source.getStageYMicrons());
         scene.setPixelSizeXMicrons(source.getPixelSizeXMicrons());
         scene.setPixelSizeYMicrons(source.getPixelSizeYMicrons());
+        scene.getChannelNames().addAll(source.getChannelNames());
+        scene.getChannelColors().addAll(source.getChannelColors());
         scene.getRawMetadata().putAll(source.getRawMetadata());
         return scene;
+    }
+
+    private int defaultChannelColor(int channel) {
+        return switch (channel % 6) {
+            case 0 -> 0x00ff0000;
+            case 1 -> 0x0000ff00;
+            case 2 -> 0x000000ff;
+            case 3 -> 0x00ffff00;
+            case 4 -> 0x00ff00ff;
+            default -> 0x0000ffff;
+        };
     }
 
     private String stageKey(CziSceneInfo scene) {
@@ -503,5 +583,8 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
     }
 
     private record CoordinateValue(double valueMicrons, String source) {
+    }
+
+    private record ReaderState(ImageReader reader, BufferedImageReader bufferedImageReader) {
     }
 }

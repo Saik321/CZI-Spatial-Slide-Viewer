@@ -5,7 +5,10 @@ import qupath.lib.images.servers.ImageServerBuilder;
 import qupath.lib.images.servers.ImageServerMetadata;
 
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Locale;
@@ -24,6 +27,7 @@ public class CziSpatialImageServerBuilder implements ImageServerBuilder<Buffered
 
     @Override
     public ImageServer<BufferedImage> buildServer(URI uri, String... args) throws Exception {
+        validateUri(uri);
         return new CziSpatialImageServer(uri, args);
     }
 
@@ -49,6 +53,29 @@ public class CziSpatialImageServerBuilder implements ImageServerBuilder<Buffered
         }
         String lower = path.toLowerCase(Locale.ROOT);
         return lower.endsWith(".czi") || lower.endsWith(".czis");
+    }
+
+    private void validateUri(URI uri) throws IOException {
+        if (uri == null) {
+            throw new IOException("CZI Spatial Viewer cannot open a null URI.");
+        }
+        if (!isCzi(uri)) {
+            throw new IOException("CZI Spatial Viewer only supports .czi/.czis files, not: " + uri);
+        }
+        if (uri.getScheme() != null && !"file".equalsIgnoreCase(uri.getScheme())) {
+            throw new IOException("CZI Spatial Viewer currently supports local file URIs only: " + uri);
+        }
+        try {
+            Path path = Path.of(uri);
+            if (!Files.exists(path)) {
+                throw new IOException("CZI file does not exist: " + path);
+            }
+            if (!Files.isReadable(path)) {
+                throw new IOException("CZI file is not readable: " + path);
+            }
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Invalid CZI file URI: " + uri, e);
+        }
     }
 
     public static class CziSpatialServerBuilder implements ImageServerBuilder.ServerBuilder<BufferedImage> {

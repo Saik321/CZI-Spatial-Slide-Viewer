@@ -16,6 +16,11 @@ public class CziSpatialMetadata {
     private List<CziPyramidLevel> pyramidLevels = new ArrayList<>();
     private Double pixelSizeXMicrons;
     private Double pixelSizeYMicrons;
+    private boolean rgb = true;
+    private String pixelType = "uint8";
+    private int channelCount = 3;
+    private final List<String> channelNames = new ArrayList<>();
+    private final List<Integer> channelColors = new ArrayList<>();
 
     private double minX;
     private double minY;
@@ -104,6 +109,38 @@ public class CziSpatialMetadata {
 
     public void setPixelSizeYMicrons(Double pixelSizeYMicrons) {
         this.pixelSizeYMicrons = pixelSizeYMicrons;
+    }
+
+    public boolean isRgb() {
+        return rgb;
+    }
+
+    public void setRgb(boolean rgb) {
+        this.rgb = rgb;
+    }
+
+    public String getPixelType() {
+        return pixelType;
+    }
+
+    public void setPixelType(String pixelType) {
+        this.pixelType = pixelType;
+    }
+
+    public int getChannelCount() {
+        return channelCount;
+    }
+
+    public void setChannelCount(int channelCount) {
+        this.channelCount = channelCount;
+    }
+
+    public List<String> getChannelNames() {
+        return channelNames;
+    }
+
+    public List<Integer> getChannelColors() {
+        return channelColors;
     }
 
     public double getMinX() {

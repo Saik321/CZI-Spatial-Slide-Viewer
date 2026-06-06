@@ -22,6 +22,8 @@ Tested target:
 - QuPath `0.5.x`
 - Java `17`
 
+QuPath `0.6.x` and `0.7.x` use Java 21-based artifacts. This Java 17 build does not claim verified compatibility with those versions yet; a separate Java 21 validation/build lane is needed before advertising 0.6+/0.7 support.
+
 ## Build
 
 Windows:
@@ -109,7 +111,7 @@ The layout preview is the strict spatial canvas: it preserves coordinate-derived
 - HALO-style preview placement for non-spatial label/macro items is inferred for visual comparison only; it is not used for QuPath measurements or annotations.
 - Settings are editable and persisted locally using Java preferences.
 - Thread safety uses synchronized Bio-Formats reader access rather than a reader pool.
-- Multichannel fluorescence display currently creates a default RGB composite from up to three channels. Full per-channel color/contrast controls are future work.
+- Multichannel fluorescence display declares `rgb(false)` metadata and preserves `UINT8`/`UINT16` channel bands where Bio-Formats exposes them. Full channel color/contrast presets beyond Bio-Formats names/default colors are future work.
 - OpenSlide/libCZI backends are placeholders.
 
 ## Troubleshooting

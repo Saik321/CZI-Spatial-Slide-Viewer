@@ -24,6 +24,8 @@ public class CziSceneInfo {
     private String units;
     private Double stageZMicrons;
     private Double objectiveMagnification;
+    private final List<String> channelNames = new ArrayList<>();
+    private final List<Integer> channelColors = new ArrayList<>();
 
     private Double stageXMicrons;
     private Double stageYMicrons;
@@ -154,6 +156,14 @@ public class CziSceneInfo {
 
     public void setObjectiveMagnification(Double objectiveMagnification) {
         this.objectiveMagnification = objectiveMagnification;
+    }
+
+    public List<String> getChannelNames() {
+        return channelNames;
+    }
+
+    public List<Integer> getChannelColors() {
+        return channelColors;
     }
 
     public Double getStageXMicrons() {

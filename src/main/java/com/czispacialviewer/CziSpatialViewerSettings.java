@@ -7,7 +7,7 @@ public class CziSpatialViewerSettings {
     private static final Preferences PREFS = Preferences.userNodeForPackage(CziSpatialViewerSettings.class);
     private static final CziSpatialViewerSettings DEFAULT = new CziSpatialViewerSettings();
 
-    private int maxCacheMemoryMb = 512;
+    private int maxCacheMemoryMb = 128;
     private int maxPreviewDimension = 4096;
     private int thumbnailSize = 256;
     private int maxOutputPixels = 67_108_864;
@@ -144,7 +144,7 @@ public class CziSpatialViewerSettings {
     }
 
     public void resetDefaults() {
-        maxCacheMemoryMb = 512;
+        maxCacheMemoryMb = 128;
         maxPreviewDimension = 4096;
         thumbnailSize = 256;
         maxOutputPixels = 67_108_864;

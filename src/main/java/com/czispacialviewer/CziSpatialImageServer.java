@@ -5,6 +5,7 @@ import com.czispacialviewer.backend.CziReaderBackend;
 import com.czispacialviewer.metadata.CziPyramidLevel;
 import com.czispacialviewer.metadata.CziSceneInfo;
 import com.czispacialviewer.metadata.CziSpatialMetadata;
+import com.czispacialviewer.util.BandedImageTools;
 import com.czispacialviewer.util.BufferedImageLruCache;
 import com.czispacialviewer.util.LightBackgroundTransparency;
 import com.czispacialviewer.util.PerformanceStats;
@@ -21,7 +22,10 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBuffer;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -43,16 +47,45 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
         super(BufferedImage.class);
         this.uri = uri;
         this.args = args == null ? new String[0] : args.clone();
-        this.path = java.nio.file.Paths.get(uri);
+        this.path = resolveLocalPath(uri);
         this.backend = new BioFormatsCziReaderBackend();
         performanceStats.recordBackendOpen();
-        this.metadata = backend.readMetadata(path);
-        this.originalMetadata = buildImageServerMetadata(metadata);
+        try {
+            this.metadata = backend.readMetadata(path);
+        } catch (Exception e) {
+            throw new IOException("Bio-Formats could not read spatial CZI metadata from " + path
+                    + ": " + e.getMessage(), e);
+        }
+        if (metadata.getScenes().isEmpty()) {
+            throw new IOException("No spatial CZI scenes with usable stage coordinates were found in " + path + ".");
+        }
+        this.originalMetadata = buildImageServerMetadata(uri, metadata);
         this.tileCache = new BufferedImageLruCache(settings.getMaxCacheBytes());
     }
 
     public CziSpatialMetadata getSpatialMetadata() {
         return metadata;
+    }
+
+    private java.nio.file.Path resolveLocalPath(URI uri) throws IOException {
+        if (uri == null) {
+            throw new IOException("CZI Spatial Viewer cannot open a null URI.");
+        }
+        if (uri.getScheme() != null && !"file".equalsIgnoreCase(uri.getScheme())) {
+            throw new IOException("CZI Spatial Viewer currently supports local file URIs only: " + uri);
+        }
+        try {
+            java.nio.file.Path resolved = java.nio.file.Paths.get(uri);
+            if (!Files.exists(resolved)) {
+                throw new IOException("CZI file does not exist: " + resolved);
+            }
+            if (!Files.isReadable(resolved)) {
+                throw new IOException("CZI file is not readable: " + resolved);
+            }
+            return resolved;
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Invalid CZI file URI: " + uri, e);
+        }
     }
 
     public PerformanceStats getPerformanceStats() {
@@ -107,10 +140,12 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
         double downsample = request.getDownsample();
         performanceStats.recordPyramidLevel(downsample);
 
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        BufferedImage image = createOutputImage(width, height);
         Graphics2D g = image.createGraphics();
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, width, height);
+        if (metadata.isRgb()) {
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, width, height);
+        }
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
         int intersectingScenes = 0;
@@ -137,10 +172,16 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
 
             try {
                 BufferedImage sceneRegion = backend.readRegion(path, scene, sceneX, sceneY, sceneWidth, sceneHeight, downsample).getImage();
-                drawSceneRegion(g, sceneRegion, drawX, drawY, drawW, drawH);
+                if (metadata.isRgb()) {
+                    drawSceneRegion(g, sceneRegion, drawX, drawY, drawW, drawH);
+                } else {
+                    BandedImageTools.copyScaledBands(sceneRegion, image, drawX, drawY, drawW, drawH);
+                }
             } catch (Exception e) {
-                g.setColor(new Color(220, 235, 250));
-                g.fillRect(drawX, drawY, drawW, drawH);
+                g.setColor(metadata.isRgb() ? new Color(220, 235, 250) : Color.BLACK);
+                if (metadata.isRgb()) {
+                    g.fillRect(drawX, drawY, drawW, drawH);
+                }
                 g.setColor(new Color(180, 40, 40));
                 g.drawRect(drawX, drawY, Math.max(0, drawW - 1), Math.max(0, drawH - 1));
             }
@@ -167,6 +208,14 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
         tileCache.put(cacheKey, image);
         performanceStats.updatePeakEstimatedCacheBytes(tileCache.getEstimatedBytes());
         return image;
+    }
+
+    private BufferedImage createOutputImage(int width, int height) {
+        if (metadata.isRgb()) {
+            return new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        }
+        int dataType = toDataBufferType(metadata.getPixelType());
+        return BandedImageTools.createBandedImage(width, height, metadata.getChannelCount(), dataType);
     }
 
     private void drawSceneRegion(Graphics2D g, BufferedImage sceneRegion, int drawX, int drawY, int drawW, int drawH) {
@@ -208,15 +257,15 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
         backend.close();
     }
 
-    private ImageServerMetadata buildImageServerMetadata(CziSpatialMetadata spatialMetadata) {
+    static ImageServerMetadata buildImageServerMetadata(URI uri, CziSpatialMetadata spatialMetadata) {
         ImageServerMetadata.Builder builder = new ImageServerMetadata.Builder(
-                getClass(),
+                CziSpatialImageServer.class,
                 uri.toString(),
                 spatialMetadata.getGlobalWidth(),
                 spatialMetadata.getGlobalHeight());
 
-        builder.rgb(true).pixelType(PixelType.UINT8);
-        builder.channels(defaultRgbChannels());
+        builder.rgb(spatialMetadata.isRgb()).pixelType(toPixelType(spatialMetadata.getPixelType()));
+        builder.channels(spatialMetadata.isRgb() ? defaultRgbChannels() : metadataChannels(spatialMetadata));
         builder.preferredTileSize(256, 256);
 
         if (spatialMetadata.getPixelSizeXMicrons() != null && spatialMetadata.getPixelSizeYMicrons() != null) {
@@ -239,12 +288,49 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
         return builder.build();
     }
 
-    private List<ImageChannel> defaultRgbChannels() {
+    private static List<ImageChannel> defaultRgbChannels() {
         List<ImageChannel> channels = new ArrayList<>();
         channels.add(ImageChannel.getInstance("Red", ColorTools.packRGB(255, 0, 0)));
         channels.add(ImageChannel.getInstance("Green", ColorTools.packRGB(0, 255, 0)));
         channels.add(ImageChannel.getInstance("Blue", ColorTools.packRGB(0, 0, 255)));
         return channels;
+    }
+
+    private static List<ImageChannel> metadataChannels(CziSpatialMetadata spatialMetadata) {
+        List<ImageChannel> channels = new ArrayList<>();
+        for (int i = 0; i < Math.max(1, spatialMetadata.getChannelCount()); i++) {
+            String name = i < spatialMetadata.getChannelNames().size()
+                    ? spatialMetadata.getChannelNames().get(i)
+                    : "Channel " + (i + 1);
+            Integer color = i < spatialMetadata.getChannelColors().size()
+                    ? spatialMetadata.getChannelColors().get(i)
+                    : ImageChannel.getDefaultChannelColor(i);
+            channels.add(ImageChannel.getInstance(name, color));
+        }
+        return channels;
+    }
+
+    private static PixelType toPixelType(String pixelType) {
+        if (pixelType == null) {
+            return PixelType.UINT8;
+        }
+        return switch (pixelType.toLowerCase(java.util.Locale.ROOT)) {
+            case "uint16" -> PixelType.UINT16;
+            case "int16" -> PixelType.INT16;
+            case "uint32" -> PixelType.UINT32;
+            case "int32" -> PixelType.INT32;
+            case "float" -> PixelType.FLOAT32;
+            case "double" -> PixelType.FLOAT64;
+            case "int8" -> PixelType.INT8;
+            default -> PixelType.UINT8;
+        };
+    }
+
+    private static int toDataBufferType(String pixelType) {
+        PixelType type = toPixelType(pixelType);
+        return type == PixelType.UINT16 || type == PixelType.INT16
+                ? DataBuffer.TYPE_USHORT
+                : DataBuffer.TYPE_BYTE;
     }
 
     private String buildCacheKey(RegionRequest request) {

@@ -2,6 +2,11 @@
 
 ## 0.2.1-alpha
 
+- Hardened project-import URI validation and error messages for missing, remote, unreadable, or non-CZI inputs.
+- Added native non-RGB multichannel metadata and banded `UINT8`/`UINT16` pixel returns for QuPath channel rendering.
+- Added a bounded Bio-Formats reader pool for concurrent tile reads.
+- Lowered default tile cache memory from 512 MB to 128 MB.
+- Replaced Windows-only JavaFX dependencies with platform-aware JavaFX Gradle plugin configuration.
 - Removed private validation slide filename from public docs, menu text, and debug defaults.
 - Added generic `data/example_validation.czi` debug default plus `-PinputCzi=...` task support.
 - Improved QuPath project import selection by increasing CZI Spatial Viewer server support priority for `.czi/.czis` files.

@@ -41,6 +41,7 @@ Checklist:
 
 - Build all-in-one JAR.
 - Install into QuPath 0.5.x.
+- Record the QuPath version. QuPath 0.6.x/0.7.x require a Java 21 compatibility build and are not fully validated by the Java 17 build.
 - Open a spatial multi-scene CZI with `Open CZI Spatial Slide`.
 - Import a CZI into a QuPath project and verify CZI Spatial Viewer is selected as the server.
 - Confirm one global canvas appears.

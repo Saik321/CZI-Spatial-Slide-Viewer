@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'application'
     id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
 }
 
 group = 'com.czispacialviewer'
@@ -31,9 +32,6 @@ ext {
 dependencies {
     implementation "io.github.qupath:qupath-core:${qupathVersion}"
     implementation "io.github.qupath:qupath-gui-fx:${qupathVersion}"
-    implementation "org.openjfx:javafx-base:${javafxVersion}:win"
-    implementation "org.openjfx:javafx-graphics:${javafxVersion}:win"
-    implementation "org.openjfx:javafx-controls:${javafxVersion}:win"
     implementation "ome:bioformats_package:${bioformatsVersion}"
     implementation "com.google.code.gson:gson:${gsonVersion}"
 
@@ -52,6 +50,11 @@ tasks.register('exportCziDebug', JavaExec) {
     if (project.hasProperty('inputCzi')) {
         args project.property('inputCzi')
     }
+}
+
+javafx {
+    version = javafxVersion
+    modules = ['javafx.base', 'javafx.graphics', 'javafx.controls']
 }
 
 tasks.register('exportCziRegionSmoke', JavaExec) {
