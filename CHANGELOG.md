@@ -3,6 +3,8 @@
 ## 0.2.1-alpha
 
 - Hardened project-import URI validation and error messages for missing, remote, unreadable, or non-CZI inputs.
+- Hardened Bio-Formats OME metadata lookups so short channel/plane metadata arrays become warnings instead of open failures.
+- Verified the release all-JAR contains the plugin settings command used by the QuPath menu.
 - Added native non-RGB multichannel metadata and banded `UINT8`/`UINT16` pixel returns for QuPath channel rendering.
 - Added a bounded Bio-Formats reader pool for concurrent tile reads.
 - Lowered default tile cache memory from 512 MB to 128 MB.

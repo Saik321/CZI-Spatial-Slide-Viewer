@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -77,6 +78,7 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
         for (int series = 0; series < seriesCount; series++) {
             reader.setSeries(series);
+            final int seriesIndex = series;
             int sizeX = reader.getSizeX();
             int sizeY = reader.getSizeY();
             if (sizeX <= 0 || sizeY <= 0) {
@@ -91,20 +93,25 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
             CziSceneInfo scene = new CziSceneInfo(series, series, sizeX, sizeY);
             scene.setChannelCount(reader.getSizeC());
-            scene.setSeriesName(metadataStore.getImageName(series));
+            scene.setSeriesName(safeMetadataValue("image name", series, -1, warnings,
+                    () -> metadataStore.getImageName(seriesIndex)));
             scene.setFormat(reader.getFormat());
             scene.setPixelType(FormatTools.getPixelTypeString(reader.getPixelType()));
             scene.setRgb(reader.isRGB());
             scene.setInterleaved(reader.isInterleaved());
             for (int channel = 0; channel < Math.max(1, reader.getSizeC()); channel++) {
-                String channelName = metadataStore.getChannelName(series, channel);
+                final int channelIndex = channel;
+                String channelName = safeMetadataValue("channel name", series, channel, warnings,
+                        () -> metadataStore.getChannelName(seriesIndex, channelIndex));
                 scene.getChannelNames().add(channelName == null || channelName.isBlank()
                         ? "Channel " + (channel + 1)
                         : channelName);
                 scene.getChannelColors().add(defaultChannelColor(channel));
             }
-            if (metadataStore.getImageAcquisitionDate(series) != null) {
-                scene.setAcquisitionDate(metadataStore.getImageAcquisitionDate(series).getValue());
+            var acquisitionDate = safeMetadataValue("acquisition date", series, -1, warnings,
+                    () -> metadataStore.getImageAcquisitionDate(seriesIndex));
+            if (acquisitionDate != null) {
+                scene.setAcquisitionDate(acquisitionDate.getValue());
             }
             copyCoordinateLikeMetadata(reader.getSeriesMetadata(), scene);
             copyCoordinateLikeMetadata(reader.getGlobalMetadata(), scene);
@@ -125,15 +132,19 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
                 scene.setCoordinateSource(stageY.source());
             }
 
-            Double pixelX = toMicrons(metadataStore.getPixelsPhysicalSizeX(series));
-            Double pixelY = toMicrons(metadataStore.getPixelsPhysicalSizeY(series));
+            Length pixelSizeX = safeMetadataValue("physical pixel size X", series, -1, warnings,
+                    () -> metadataStore.getPixelsPhysicalSizeX(seriesIndex));
+            Length pixelSizeY = safeMetadataValue("physical pixel size Y", series, -1, warnings,
+                    () -> metadataStore.getPixelsPhysicalSizeY(seriesIndex));
+            Double pixelX = toMicrons(pixelSizeX);
+            Double pixelY = toMicrons(pixelSizeY);
             if (pixelX == null || pixelY == null) {
                 warnings.add("Missing pixel size metadata for scene " + series);
             }
             scene.setPixelSizeXMicrons(pixelX);
             scene.setPixelSizeYMicrons(pixelY);
-            if (metadataStore.getPixelsPhysicalSizeX(series) != null && metadataStore.getPixelsPhysicalSizeX(series).unit() != null) {
-                scene.setUnits(metadataStore.getPixelsPhysicalSizeX(series).unit().getSymbol());
+            if (pixelSizeX != null && pixelSizeX.unit() != null) {
+                scene.setUnits(pixelSizeX.unit().getSymbol());
             }
 
             String compression = scene.getCompression();
@@ -143,7 +154,7 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
             }
             if (!scene.isRgb() && scene.getChannelCount() > 1) {
                 warnings.add("Multichannel non-RGB series " + series
-                        + " detected; default display composites up to three channels into RGB.");
+                        + " detected; preserving native channels for QuPath display where supported.");
             }
 
             int resolutionCount = reader.getResolutionCount();
@@ -341,9 +352,16 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
     private CoordinateValue findStageCoordinateMicrons(IMetadata metadataStore, int series, boolean xAxis, CziSceneInfo scene) {
         for (int plane = 0; plane < Math.max(1, reader.getImageCount()); plane++) {
-            Length length = xAxis
-                    ? metadataStore.getPlanePositionX(series, plane)
-                    : metadataStore.getPlanePositionY(series, plane);
+            Length length;
+            try {
+                length = xAxis
+                        ? metadataStore.getPlanePositionX(series, plane)
+                        : metadataStore.getPlanePositionY(series, plane);
+            } catch (RuntimeException e) {
+                logger.debug("OME plane {} coordinate lookup failed for series {} plane {}: {}",
+                        xAxis ? "X" : "Y", series, plane, e.getMessage());
+                continue;
+            }
             Double value = toMicrons(length);
             if (value != null) {
                 return new CoordinateValue(value, "OME plane " + plane + " " + (xAxis ? "PositionX" : "PositionY"));
@@ -357,6 +375,17 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
                 .flatMap(entry -> parseCoordinateValue(entry.getValue())
                         .map(value -> new CoordinateValue(value, "Bio-Formats metadata: " + entry.getKey())))
                 .orElse(null);
+    }
+
+    <T> T safeMetadataValue(String field, int series, int index, List<String> warnings, Supplier<T> lookup) {
+        try {
+            return lookup.get();
+        } catch (IndexOutOfBoundsException | IllegalArgumentException e) {
+            String indexedField = index >= 0 ? field + " " + index : field;
+            warnings.add("OME metadata " + indexedField + " unavailable for series " + series
+                    + " (" + e.getMessage() + "); using fallback/default value.");
+            return null;
+        }
     }
 
     private void copyCoordinateLikeMetadata(Hashtable<String, Object> source, CziSceneInfo scene) {
