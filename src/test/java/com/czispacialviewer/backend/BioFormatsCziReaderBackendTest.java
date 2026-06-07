@@ -28,6 +28,15 @@ class BioFormatsCziReaderBackendTest {
     }
 
     @Test
+    void defaultZDisplayUsesMiddlePlaneForStacks() {
+        BioFormatsCziReaderBackend backend = new BioFormatsCziReaderBackend();
+
+        assertEquals(0, backend.defaultDisplayZIndex(1));
+        assertEquals(20, backend.defaultDisplayZIndex(41));
+        assertEquals(2, backend.defaultDisplayZIndex(5));
+    }
+
+    @Test
     void singleSceneInternalPyramidLevelsKeepSourceResolutionIndexes() {
         BioFormatsCziReaderBackend backend = new BioFormatsCziReaderBackend();
         CziSceneInfo scene = spatialScene(0, 1000, 1000);

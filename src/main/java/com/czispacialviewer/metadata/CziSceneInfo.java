@@ -13,6 +13,10 @@ public class CziSceneInfo {
     private final int height;
 
     private int channelCount;
+    private int zCount = 1;
+    private int timepointCount = 1;
+    private int displayZIndex;
+    private int displayTIndex;
     private String seriesName;
     private String format;
     private String compression;
@@ -68,6 +72,38 @@ public class CziSceneInfo {
 
     public void setChannelCount(int channelCount) {
         this.channelCount = channelCount;
+    }
+
+    public int getZCount() {
+        return zCount;
+    }
+
+    public void setZCount(int zCount) {
+        this.zCount = Math.max(1, zCount);
+    }
+
+    public int getTimepointCount() {
+        return timepointCount;
+    }
+
+    public void setTimepointCount(int timepointCount) {
+        this.timepointCount = Math.max(1, timepointCount);
+    }
+
+    public int getDisplayZIndex() {
+        return displayZIndex;
+    }
+
+    public void setDisplayZIndex(int displayZIndex) {
+        this.displayZIndex = Math.max(0, displayZIndex);
+    }
+
+    public int getDisplayTIndex() {
+        return displayTIndex;
+    }
+
+    public void setDisplayTIndex(int displayTIndex) {
+        this.displayTIndex = Math.max(0, displayTIndex);
     }
 
     public String getSeriesName() {

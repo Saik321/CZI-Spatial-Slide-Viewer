@@ -194,6 +194,10 @@ public class DebugJsonExporter {
             obj.addProperty("width", scene.getWidth());
             obj.addProperty("height", scene.getHeight());
             obj.addProperty("channelCount", scene.getChannelCount());
+            obj.addProperty("zCount", scene.getZCount());
+            obj.addProperty("timepointCount", scene.getTimepointCount());
+            obj.addProperty("displayZIndex", scene.getDisplayZIndex());
+            obj.addProperty("displayTIndex", scene.getDisplayTIndex());
             obj.addProperty("pixelSizeXMicrons", scene.getPixelSizeXMicrons());
             obj.addProperty("pixelSizeYMicrons", scene.getPixelSizeYMicrons());
             obj.addProperty("widthSource", "Bio-Formats core metadata");
@@ -276,6 +280,10 @@ public class DebugJsonExporter {
         obj.addProperty("width", series.getWidth());
         obj.addProperty("height", series.getHeight());
         obj.addProperty("channelCount", series.getChannelCount());
+        obj.addProperty("zCount", series.getZCount());
+        obj.addProperty("timepointCount", series.getTimepointCount());
+        obj.addProperty("displayZIndex", series.getDisplayZIndex());
+        obj.addProperty("displayTIndex", series.getDisplayTIndex());
         obj.addProperty("pixelType", series.getPixelType());
         obj.addProperty("rgb", series.isRgb());
         obj.addProperty("interleaved", series.isInterleaved());

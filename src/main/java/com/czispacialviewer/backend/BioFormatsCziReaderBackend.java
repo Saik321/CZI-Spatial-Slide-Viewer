@@ -93,6 +93,10 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
             CziSceneInfo scene = new CziSceneInfo(series, series, sizeX, sizeY);
             scene.setChannelCount(reader.getSizeC());
+            scene.setZCount(reader.getSizeZ());
+            scene.setTimepointCount(reader.getSizeT());
+            scene.setDisplayZIndex(defaultDisplayZIndex(reader.getSizeZ()));
+            scene.setDisplayTIndex(0);
             scene.setSeriesName(safeMetadataValue("image name", series, -1, warnings,
                     () -> metadataStore.getImageName(seriesIndex)));
             scene.setFormat(reader.getFormat());
@@ -155,6 +159,15 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
             if (!scene.isRgb() && scene.getChannelCount() > 1) {
                 warnings.add("Multichannel non-RGB series " + series
                         + " detected; preserving native channels for QuPath display where supported.");
+            }
+            if (scene.getZCount() > 1) {
+                warnings.add("Z-stack series " + series + " has " + scene.getZCount()
+                        + " Z planes; displaying middle Z plane " + scene.getDisplayZIndex()
+                        + " by default. Full Z projection/navigation is not implemented yet.");
+            }
+            if (scene.getTimepointCount() > 1) {
+                warnings.add("Time series " + series + " has " + scene.getTimepointCount()
+                        + " timepoints; displaying T=0 by default. Time navigation is not implemented yet.");
             }
 
             int resolutionCount = reader.getResolutionCount();
@@ -240,14 +253,16 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
     private BufferedImage readDisplayImage(ReaderState state, CziSceneInfo scene, int x, int y, int width, int height) throws FormatException, IOException {
         ImageReader activeReader = state.reader();
         BufferedImageReader activeBufferedReader = state.bufferedImageReader();
+        int z = boundedIndex(scene.getDisplayZIndex(), activeReader.getSizeZ());
+        int t = boundedIndex(scene.getDisplayTIndex(), activeReader.getSizeT());
         if (activeReader.isRGB()) {
-            return activeBufferedReader.openImage(0, x, y, width, height);
+            return activeBufferedReader.openImage(activeReader.getIndex(z, 0, t), x, y, width, height);
         }
 
         int pixelType = activeReader.getPixelType();
         if (pixelType != FormatTools.UINT8 && pixelType != FormatTools.UINT16) {
             logger.warn("Falling back to Bio-Formats BufferedImage conversion for unsupported multichannel pixel type {}", scene.getPixelType());
-            return activeBufferedReader.openImage(0, x, y, width, height);
+            return activeBufferedReader.openImage(activeReader.getIndex(z, 0, t), x, y, width, height);
         }
 
         int channels = Math.max(1, activeReader.getSizeC());
@@ -255,10 +270,18 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         BufferedImage image = BandedImageTools.createBandedImage(width, height, channels, dataType);
         WritableRaster raster = image.getRaster();
         for (int c = 0; c < channels; c++) {
-            int plane = activeReader.getIndex(0, c, 0);
+            int plane = activeReader.getIndex(z, c, t);
             copyChannelBytes(activeReader.openBytes(plane, x, y, width, height), raster, c, width, height, pixelType, activeReader.isLittleEndian());
         }
         return image;
+    }
+
+    int defaultDisplayZIndex(int sizeZ) {
+        return Math.max(0, sizeZ / 2);
+    }
+
+    private int boundedIndex(int requested, int size) {
+        return Math.max(0, Math.min(Math.max(1, size) - 1, requested));
     }
 
     private ReaderState borrowReader(Path path) throws FormatException, IOException {
@@ -513,6 +536,10 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         CziSeriesInfo series = new CziSeriesInfo(scene.getSeriesIndex(), scene.getWidth(), scene.getHeight());
         series.setSeriesName(scene.getSeriesName());
         series.setChannelCount(scene.getChannelCount());
+        series.setZCount(scene.getZCount());
+        series.setTimepointCount(scene.getTimepointCount());
+        series.setDisplayZIndex(scene.getDisplayZIndex());
+        series.setDisplayTIndex(scene.getDisplayTIndex());
         series.setPixelType(scene.getPixelType());
         series.setRgb(scene.isRgb());
         series.setInterleaved(scene.isInterleaved());
@@ -593,6 +620,10 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
     private CziSceneInfo copyBaseScene(int sceneIndex, CziSceneInfo source) {
         CziSceneInfo scene = new CziSceneInfo(sceneIndex, source.getSeriesIndex(), source.getWidth(), source.getHeight());
         scene.setChannelCount(source.getChannelCount());
+        scene.setZCount(source.getZCount());
+        scene.setTimepointCount(source.getTimepointCount());
+        scene.setDisplayZIndex(source.getDisplayZIndex());
+        scene.setDisplayTIndex(source.getDisplayTIndex());
         scene.setSeriesName(source.getSeriesName());
         scene.setFormat(source.getFormat());
         scene.setCompression(source.getCompression());

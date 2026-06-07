@@ -8,6 +8,7 @@
 - Fixed native pyramid selection so zooming uses the selected Bio-Formats resolution instead of always reading resolution 0.
 - Preserved internal Bio-Formats pyramid resolutions when grouping CZI series into spatial scenes.
 - Added a conservative same-column vertical overlap correction for scenes whose CZI metadata appears to use tissue-bounding-box origins instead of a shared tile origin.
+- Added multidimensional CZI diagnostics and default middle-Z display for Z-stacks instead of silently showing Z=0.
 - Added native non-RGB multichannel metadata and banded `UINT8`/`UINT16` pixel returns for QuPath channel rendering.
 - Added a bounded Bio-Formats reader pool for concurrent tile reads.
 - Lowered default tile cache memory from 512 MB to 128 MB.

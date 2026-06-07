@@ -12,6 +12,10 @@ public class CziSeriesInfo {
     private boolean spatial;
     private boolean readable = true;
     private int channelCount;
+    private int zCount = 1;
+    private int timepointCount = 1;
+    private int displayZIndex;
+    private int displayTIndex;
     private String pixelType;
     private boolean rgb;
     private boolean interleaved;
@@ -83,6 +87,38 @@ public class CziSeriesInfo {
 
     public void setChannelCount(int channelCount) {
         this.channelCount = channelCount;
+    }
+
+    public int getZCount() {
+        return zCount;
+    }
+
+    public void setZCount(int zCount) {
+        this.zCount = Math.max(1, zCount);
+    }
+
+    public int getTimepointCount() {
+        return timepointCount;
+    }
+
+    public void setTimepointCount(int timepointCount) {
+        this.timepointCount = Math.max(1, timepointCount);
+    }
+
+    public int getDisplayZIndex() {
+        return displayZIndex;
+    }
+
+    public void setDisplayZIndex(int displayZIndex) {
+        this.displayZIndex = Math.max(0, displayZIndex);
+    }
+
+    public int getDisplayTIndex() {
+        return displayTIndex;
+    }
+
+    public void setDisplayTIndex(int displayTIndex) {
+        this.displayTIndex = Math.max(0, displayTIndex);
     }
 
     public String getPixelType() {

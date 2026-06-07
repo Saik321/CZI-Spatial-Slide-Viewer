@@ -110,8 +110,9 @@ The layout preview is the strict spatial canvas: it preserves coordinate-derived
 - Series without usable X/Y stage metadata are excluded from the analysis canvas but listed in the manifest, debug report, contact sheet, and support bundle.
 - HALO-style preview placement for non-spatial label/macro items is inferred for visual comparison only; it is not used for QuPath measurements or annotations.
 - Settings are editable and persisted locally using Java preferences.
-- Thread safety uses synchronized Bio-Formats reader access rather than a reader pool.
+- Thread safety uses a bounded Bio-Formats reader pool for concurrent tile requests.
 - Multichannel fluorescence display declares `rgb(false)` metadata and preserves `UINT8`/`UINT16` channel bands where Bio-Formats exposes them. Full channel color/contrast presets beyond Bio-Formats names/default colors are future work.
+- Z-stack CZI files display the middle Z plane by default and report the Z count in manifests/support bundles. Full Z navigation and lazy Z projection are future work.
 - OpenSlide/libCZI backends are placeholders.
 
 ## Troubleshooting
