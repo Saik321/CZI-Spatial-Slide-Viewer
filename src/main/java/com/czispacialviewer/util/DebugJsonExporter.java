@@ -166,6 +166,7 @@ public class DebugJsonExporter {
             obj.addProperty("height", level.getHeight());
             obj.addProperty("downsample", level.getDownsample());
             obj.addProperty("sourceSeriesIndex", level.getSourceSeriesIndex());
+            obj.addProperty("sourceResolutionIndex", level.getSourceResolutionIndex());
             pyramidLevels.add(obj);
         }
         root.add("pyramidLevels", pyramidLevels);
@@ -208,6 +209,7 @@ public class DebugJsonExporter {
                 levelObj.addProperty("height", level.getHeight());
                 levelObj.addProperty("downsample", level.getDownsample());
                 levelObj.addProperty("sourceSeriesIndex", level.getSourceSeriesIndex());
+                levelObj.addProperty("sourceResolutionIndex", level.getSourceResolutionIndex());
                 scenePyramidLevels.add(levelObj);
             }
             obj.add("pyramidLevels", scenePyramidLevels);

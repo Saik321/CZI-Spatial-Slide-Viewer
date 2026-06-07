@@ -170,7 +170,7 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
                 int levelWidth = reader.getSizeX();
                 int levelHeight = reader.getSizeY();
                 double downsample = levelWidth > 0 ? baseWidth / (double) levelWidth : 1.0;
-                scene.getPyramidLevels().add(new CziPyramidLevel(r, levelWidth, levelHeight, downsample, series));
+                scene.getPyramidLevels().add(new CziPyramidLevel(r, levelWidth, levelHeight, downsample, series, r));
             }
             reader.setResolution(0);
 
@@ -219,11 +219,16 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         int levelHeight = Math.max(1, levelMaxY - levelY);
 
             state.reader().setSeries(sourceSeries);
-        try {
-                state.reader().setResolution(0);
-        } catch (IllegalArgumentException ignored) {
-            // Some Bio-Formats readers expose pyramid levels as separate series only.
-        }
+            try {
+                int resolution = Math.min(level.getSourceResolutionIndex(), Math.max(0, state.reader().getResolutionCount() - 1));
+                state.reader().setResolution(resolution);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Reading CZI scene {} from series {} resolution {} for requested downsample {} (native {})",
+                            scene.getSceneIndex(), sourceSeries, resolution, downsample, levelDownsample);
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Some Bio-Formats readers expose pyramid levels as separate series only.
+            }
 
             BufferedImage image = readDisplayImage(state, scene, levelX, levelY, levelWidth, levelHeight);
         return new CziTileReadResult(image, x, y, levelDownsample);
@@ -333,7 +338,7 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         }
     }
 
-    private CziPyramidLevel selectPyramidLevel(CziSceneInfo scene, double requestedDownsample) {
+    CziPyramidLevel selectPyramidLevel(CziSceneInfo scene, double requestedDownsample) {
         return scene.getPyramidLevels().stream()
                 .min(Comparator.comparingDouble(level -> Math.abs(level.getDownsample() - requestedDownsample)))
                 .orElse(new CziPyramidLevel(0, scene.getWidth(), scene.getHeight(), 1.0, scene.getSeriesIndex()));
@@ -455,7 +460,7 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         return Optional.of(value);
     }
 
-    private List<CziSceneInfo> groupPyramidSeries(List<CziSceneInfo> seriesScenes, List<String> warnings) {
+    List<CziSceneInfo> groupPyramidSeries(List<CziSceneInfo> seriesScenes, List<String> warnings) {
         Map<String, List<CziSceneInfo>> groups = new LinkedHashMap<>();
         for (CziSceneInfo scene : seriesScenes) {
             if (scene.getStageXMicrons() == null || scene.getStageYMicrons() == null) {
@@ -473,16 +478,35 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
             CziSceneInfo base = group.get(0);
             CziSceneInfo scene = copyBaseScene(sceneIndex++, base);
             scene.getPyramidLevels().clear();
-            for (int level = 0; level < group.size(); level++) {
-                CziSceneInfo levelScene = group.get(level);
-                double downsample = levelScene.getWidth() > 0 ? base.getWidth() / (double) levelScene.getWidth() : 1.0;
-                scene.getPyramidLevels().add(new CziPyramidLevel(level, levelScene.getWidth(), levelScene.getHeight(), downsample, levelScene.getSeriesIndex()));
+            int levelIndex = 0;
+            for (CziSceneInfo levelScene : group) {
+                if (levelScene.getPyramidLevels().isEmpty()) {
+                    double downsample = levelScene.getWidth() > 0 ? base.getWidth() / (double) levelScene.getWidth() : 1.0;
+                    scene.getPyramidLevels().add(new CziPyramidLevel(levelIndex++, levelScene.getWidth(), levelScene.getHeight(),
+                            downsample, levelScene.getSeriesIndex(), 0));
+                    continue;
+                }
+                for (CziPyramidLevel sourceLevel : levelScene.getPyramidLevels()) {
+                    double downsample = sourceLevel.getWidth() > 0 ? base.getWidth() / (double) sourceLevel.getWidth() : 1.0;
+                    if (hasSimilarLevel(scene.getPyramidLevels(), downsample, sourceLevel.getWidth(), sourceLevel.getHeight())) {
+                        continue;
+                    }
+                    scene.getPyramidLevels().add(new CziPyramidLevel(levelIndex++, sourceLevel.getWidth(), sourceLevel.getHeight(),
+                            downsample, levelScene.getSeriesIndex(), sourceLevel.getSourceResolutionIndex()));
+                }
             }
+            scene.getPyramidLevels().sort(Comparator.comparingDouble(CziPyramidLevel::getDownsample));
             scene.getTiles().add(new CziTileInfo(scene.getSceneIndex(), 0, 0, 1.0, scene.getWidth(), scene.getHeight()));
             grouped.add(scene);
         }
 
         return grouped;
+    }
+
+    private boolean hasSimilarLevel(List<CziPyramidLevel> levels, double downsample, int width, int height) {
+        return levels.stream().anyMatch(level ->
+                Math.abs(level.getDownsample() - downsample) < 0.001
+                        || level.getWidth() == width && level.getHeight() == height);
     }
 
     private CziSeriesInfo toSeriesInfo(CziSceneInfo scene) {
