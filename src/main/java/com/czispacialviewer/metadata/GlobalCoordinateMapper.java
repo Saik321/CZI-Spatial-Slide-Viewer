@@ -11,6 +11,8 @@ import java.util.Set;
 public class GlobalCoordinateMapper {
 
     private static final double PIXEL_SIZE_TOLERANCE = 0.01;
+    private static final double SAME_COLUMN_X_OVERLAP_RATIO = 0.60;
+    private static final double MIN_VERTICAL_OVERLAP_TO_CORRECT = 2.0;
 
     public void apply(CziSpatialMetadata metadata) {
         List<CziSceneInfo> scenes = metadata.getScenes();
@@ -53,8 +55,6 @@ public class GlobalCoordinateMapper {
             minStageY = 0.0;
         }
 
-        double maxX = 0;
-        double maxY = 0;
         int totalTiles = 0;
         Set<String> seenStageCoordinates = new HashSet<>();
 
@@ -92,9 +92,16 @@ public class GlobalCoordinateMapper {
                 tile.setGlobalY(globalY);
             }
 
-            maxX = Math.max(maxX, globalX + scene.getWidth());
-            maxY = Math.max(maxY, globalY + scene.getHeight());
             totalTiles += Math.max(1, scene.getTiles().size());
+        }
+
+        resolveLikelyVerticalStackingOverlaps(metadata);
+
+        double maxX = 0;
+        double maxY = 0;
+        for (CziSceneInfo scene : scenes) {
+            maxX = Math.max(maxX, scene.getGlobalX() + scene.getWidth());
+            maxY = Math.max(maxY, scene.getGlobalY() + scene.getHeight());
         }
 
         metadata.setMinX(0);
@@ -107,6 +114,70 @@ public class GlobalCoordinateMapper {
 
         checkOverlaps(metadata);
         buildGlobalPyramidLevels(metadata);
+    }
+
+    private void resolveLikelyVerticalStackingOverlaps(CziSpatialMetadata metadata) {
+        List<CziSceneInfo> sorted = new ArrayList<>(metadata.getScenes());
+        sorted.sort(Comparator
+                .comparingDouble(CziSceneInfo::getGlobalY)
+                .thenComparingDouble(CziSceneInfo::getGlobalX)
+                .thenComparingInt(CziSceneInfo::getSceneIndex));
+
+        for (int i = 0; i < sorted.size(); i++) {
+            CziSceneInfo upper = sorted.get(i);
+            for (int j = i + 1; j < sorted.size(); j++) {
+                CziSceneInfo lower = sorted.get(j);
+                if (!looksLikeSameColumnVerticalOverlap(upper, lower)) {
+                    continue;
+                }
+                double correctedY = upper.getGlobalY() + upper.getHeight();
+                if (correctedY > lower.getGlobalY()) {
+                    double shift = correctedY - lower.getGlobalY();
+                    shiftSceneY(lower, correctedY);
+                    metadata.addWarning("Adjusted likely same-column vertical scene overlap between scenes "
+                            + upper.getSceneIndex() + " and " + lower.getSceneIndex()
+                            + " by shifting scene " + lower.getSceneIndex() + " down " + Math.round(shift)
+                            + " px. This preserves separate scene rectangles when CZI metadata appears to use tissue-bounding-box origins.");
+                }
+            }
+        }
+    }
+
+    private boolean looksLikeSameColumnVerticalOverlap(CziSceneInfo upper, CziSceneInfo lower) {
+        if (upper.getGlobalY() > lower.getGlobalY()) {
+            return looksLikeSameColumnVerticalOverlap(lower, upper);
+        }
+        double xOverlap = overlapLength(upper.getGlobalX(), upper.getGlobalX() + upper.getWidth(),
+                lower.getGlobalX(), lower.getGlobalX() + lower.getWidth());
+        double minWidth = Math.max(1.0, Math.min(upper.getWidth(), lower.getWidth()));
+        double xOverlapRatio = xOverlap / minWidth;
+        if (xOverlapRatio < SAME_COLUMN_X_OVERLAP_RATIO) {
+            return false;
+        }
+
+        double verticalOverlap = upper.getGlobalY() + upper.getHeight() - lower.getGlobalY();
+        if (verticalOverlap < MIN_VERTICAL_OVERLAP_TO_CORRECT) {
+            return false;
+        }
+
+        double centerDeltaY = Math.abs(centerY(upper) - centerY(lower));
+        double minHeight = Math.max(1.0, Math.min(upper.getHeight(), lower.getHeight()));
+        return centerDeltaY > minHeight * 0.25;
+    }
+
+    private double overlapLength(double a1, double a2, double b1, double b2) {
+        return Math.max(0.0, Math.min(a2, b2) - Math.max(a1, b1));
+    }
+
+    private double centerY(CziSceneInfo scene) {
+        return scene.getGlobalY() + scene.getHeight() / 2.0;
+    }
+
+    private void shiftSceneY(CziSceneInfo scene, double newY) {
+        scene.setGlobalY(newY);
+        for (CziTileInfo tile : scene.getTiles()) {
+            tile.setGlobalY(newY);
+        }
     }
 
     private void checkOverlaps(CziSpatialMetadata metadata) {

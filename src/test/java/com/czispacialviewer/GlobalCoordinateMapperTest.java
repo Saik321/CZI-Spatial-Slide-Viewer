@@ -60,6 +60,49 @@ class GlobalCoordinateMapperTest {
     }
 
     @Test
+    void testLikelySameColumnVerticalOverlapIsSeparated() {
+        CziSceneInfo scene1 = new CziSceneInfo(0, 0, 100, 100);
+        scene1.setStageXMicrons(0.0);
+        scene1.setStageYMicrons(0.0);
+        scene1.setPixelSizeXMicrons(1.0);
+        scene1.setPixelSizeYMicrons(1.0);
+
+        CziSceneInfo scene2 = new CziSceneInfo(1, 1, 100, 100);
+        scene2.setStageXMicrons(5.0);
+        scene2.setStageYMicrons(80.0);
+        scene2.setPixelSizeXMicrons(1.0);
+        scene2.setPixelSizeYMicrons(1.0);
+
+        CziSpatialMetadata metadata = new CziSpatialMetadata(Path.of("data", "test.czi"), List.of(scene1, scene2));
+        new GlobalCoordinateMapper().apply(metadata);
+
+        assertEquals(100.0, scene2.getGlobalY(), 0.001);
+        assertEquals(200, metadata.getGlobalHeight());
+        assertTrue(metadata.getWarnings().stream().anyMatch(w -> w.contains("Adjusted likely same-column vertical scene overlap")));
+    }
+
+    @Test
+    void testHorizontalOverlapIsReportedButNotMoved() {
+        CziSceneInfo scene1 = new CziSceneInfo(0, 0, 100, 100);
+        scene1.setStageXMicrons(0.0);
+        scene1.setStageYMicrons(0.0);
+        scene1.setPixelSizeXMicrons(1.0);
+        scene1.setPixelSizeYMicrons(1.0);
+
+        CziSceneInfo scene2 = new CziSceneInfo(1, 1, 100, 100);
+        scene2.setStageXMicrons(50.0);
+        scene2.setStageYMicrons(0.0);
+        scene2.setPixelSizeXMicrons(1.0);
+        scene2.setPixelSizeYMicrons(1.0);
+
+        CziSpatialMetadata metadata = new CziSpatialMetadata(Path.of("data", "test.czi"), List.of(scene1, scene2));
+        new GlobalCoordinateMapper().apply(metadata);
+
+        assertEquals(0.0, scene2.getGlobalY(), 0.001);
+        assertTrue(metadata.getWarnings().stream().anyMatch(w -> w.contains("Overlapping scenes")));
+    }
+
+    @Test
     void testPhysicalCoordinatesConvertToGlobalPixelsUsingCalibration() {
         CziSceneInfo scene1 = new CziSceneInfo(0, 0, 100, 100);
         scene1.setStageXMicrons(1000.0);
