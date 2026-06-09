@@ -9,10 +9,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Locale;
-import java.util.Map;
 
 public class CziSpatialImageServerBuilder implements ImageServerBuilder<BufferedImage> {
 
@@ -21,7 +19,7 @@ public class CziSpatialImageServerBuilder implements ImageServerBuilder<Buffered
         if (!isCzi(uri)) {
             return UriImageSupport.createInstance(getClass(), 0f, Collections.emptyList());
         }
-        var builder = new CziSpatialServerBuilder(uri, args, null);
+        var builder = ImageServerBuilder.DefaultImageServerBuilder.createInstance(getClass(), uri, args);
         return UriImageSupport.createInstance(getClass(), 4.5f, builder);
     }
 
@@ -78,30 +76,7 @@ public class CziSpatialImageServerBuilder implements ImageServerBuilder<Buffered
         }
     }
 
-    public static class CziSpatialServerBuilder implements ImageServerBuilder.ServerBuilder<BufferedImage> {
-
-        private final URI uri;
-        private final String[] args;
-
-        public CziSpatialServerBuilder(URI uri, String[] args, ImageServerMetadata metadata) {
-            this.uri = uri;
-            this.args = args == null ? new String[0] : args.clone();
-        }
-
-        @Override
-        public ImageServer<BufferedImage> build() throws Exception {
-            return new CziSpatialImageServer(uri, args);
-        }
-
-        @Override
-        public Collection<URI> getURIs() {
-            return Collections.singletonList(uri);
-        }
-
-        @Override
-        public ServerBuilder<BufferedImage> updateURIs(Map<URI, URI> updateMap) {
-            URI updated = updateMap.getOrDefault(uri, uri);
-            return new CziSpatialServerBuilder(updated, args, null);
-        }
+    public static ImageServerBuilder.ServerBuilder<BufferedImage> createSerializableBuilder(URI uri, ImageServerMetadata metadata, String... args) {
+        return ImageServerBuilder.DefaultImageServerBuilder.createInstance(CziSpatialImageServerBuilder.class, metadata, uri, args);
     }
 }

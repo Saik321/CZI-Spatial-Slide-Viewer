@@ -104,7 +104,7 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
 
     @Override
     protected ImageServerBuilder.ServerBuilder<BufferedImage> createServerBuilder() {
-        return new CziSpatialImageServerBuilder.CziSpatialServerBuilder(uri, args, originalMetadata);
+        return CziSpatialImageServerBuilder.createSerializableBuilder(uri, originalMetadata, args);
     }
 
     @Override

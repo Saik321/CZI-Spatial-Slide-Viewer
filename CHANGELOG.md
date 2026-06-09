@@ -2,6 +2,7 @@
 
 ## 0.2.1-alpha
 
+- Switched project save/reopen support to QuPath's default serializable image-server builder to fix "unable to serialize" errors when saving annotations, view settings, and project state.
 - Hardened project-import URI validation and error messages for missing, remote, unreadable, or non-CZI inputs.
 - Hardened Bio-Formats OME metadata lookups so short channel/plane metadata arrays become warnings instead of open failures.
 - Verified the release all-JAR contains the plugin settings command used by the QuPath menu.
