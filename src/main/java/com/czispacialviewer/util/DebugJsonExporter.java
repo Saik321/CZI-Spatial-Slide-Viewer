@@ -142,6 +142,11 @@ public class DebugJsonExporter {
         root.addProperty("skippedItemCount", metadata.getSkippedSeriesCount());
         root.addProperty("haloStylePreviewIncludesInferredPresentationBand", !metadata.getNonSpatialSeries().isEmpty());
         root.addProperty("tileCount", metadata.getTotalTiles());
+        root.addProperty("channelCount", metadata.getChannelCount());
+        root.addProperty("rgb", metadata.isRgb());
+        root.addProperty("pixelType", metadata.getPixelType());
+        root.add("channelNames", stringArray(metadata.getChannelNames()));
+        root.add("channelColors", colorArray(metadata.getChannelColors()));
         root.addProperty("globalCanvasWidth", metadata.getGlobalWidth());
         root.addProperty("globalCanvasHeight", metadata.getGlobalHeight());
         root.addProperty("minX", metadata.getMinX());
@@ -194,6 +199,8 @@ public class DebugJsonExporter {
             obj.addProperty("width", scene.getWidth());
             obj.addProperty("height", scene.getHeight());
             obj.addProperty("channelCount", scene.getChannelCount());
+            obj.add("channelNames", stringArray(scene.getChannelNames()));
+            obj.add("channelColors", colorArray(scene.getChannelColors()));
             obj.addProperty("zCount", scene.getZCount());
             obj.addProperty("timepointCount", scene.getTimepointCount());
             obj.addProperty("displayZIndex", scene.getDisplayZIndex());
@@ -294,6 +301,26 @@ public class DebugJsonExporter {
         obj.addProperty("heightSource", "Bio-Formats core metadata");
         obj.addProperty("classificationSource", "inferred from coordinates, dimensions, name, and available metadata");
         return obj;
+    }
+
+    private static JsonArray stringArray(Iterable<String> values) {
+        JsonArray array = new JsonArray();
+        for (String value : values) {
+            array.add(value);
+        }
+        return array;
+    }
+
+    private static JsonArray colorArray(Iterable<Integer> values) {
+        JsonArray array = new JsonArray();
+        for (Integer value : values) {
+            if (value == null) {
+                array.add((String) null);
+            } else {
+                array.add(String.format("#%06X", value & 0xffffff));
+            }
+        }
+        return array;
     }
 
     public static void main(String[] args) {

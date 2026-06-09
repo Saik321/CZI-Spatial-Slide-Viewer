@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -68,6 +69,27 @@ class BioFormatsCziReaderBackendTest {
         assertEquals(1, selected.getSourceSeriesIndex());
         assertEquals(0, selected.getSourceResolutionIndex());
         assertEquals(4.0, selected.getDownsample(), 0.001);
+    }
+
+    @Test
+    void fluorescenceChannelNamesSeparateRedAndFarRedFallbackColors() {
+        BioFormatsCziReaderBackend backend = new BioFormatsCziReaderBackend();
+
+        int red555 = backend.channelDisplayColor(1, "Alexa Fluor 555", null, null, null, null);
+        int farRed647 = backend.channelDisplayColor(2, "Alexa Fluor 647", null, null, null, null);
+
+        assertEquals(0xff6000, red555);
+        assertEquals(0xff00ff, farRed647);
+        assertNotEquals(red555, farRed647);
+    }
+
+    @Test
+    void fluorMetadataIsUsedWhenChannelNameIsGeneric() {
+        BioFormatsCziReaderBackend backend = new BioFormatsCziReaderBackend();
+
+        int farRed = backend.channelDisplayColor(3, "Channel 4", "Cy5", null, null, null);
+
+        assertEquals(0xff00ff, farRed);
     }
 
     private CziSceneInfo spatialScene(int series, int width, int height) {

@@ -107,10 +107,17 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
                 final int channelIndex = channel;
                 String channelName = safeMetadataValue("channel name", series, channel, warnings,
                         () -> metadataStore.getChannelName(seriesIndex, channelIndex));
-                scene.getChannelNames().add(channelName == null || channelName.isBlank()
-                        ? "Channel " + (channel + 1)
-                        : channelName);
-                scene.getChannelColors().add(defaultChannelColor(channel));
+                String fluor = safeMetadataValue("channel fluor", series, channel, warnings,
+                        () -> metadataStore.getChannelFluor(seriesIndex, channelIndex));
+                Length excitation = safeMetadataValue("channel excitation wavelength", series, channel, warnings,
+                        () -> metadataStore.getChannelExcitationWavelength(seriesIndex, channelIndex));
+                Length emission = safeMetadataValue("channel emission wavelength", series, channel, warnings,
+                        () -> metadataStore.getChannelEmissionWavelength(seriesIndex, channelIndex));
+                ome.xml.model.primitives.Color omeColor = safeMetadataValue("channel color", series, channel, warnings,
+                        () -> metadataStore.getChannelColor(seriesIndex, channelIndex));
+
+                scene.getChannelNames().add(channelDisplayName(channel, channelName, fluor, excitation, emission));
+                scene.getChannelColors().add(channelDisplayColor(channel, channelName, fluor, excitation, emission, omeColor));
             }
             var acquisitionDate = safeMetadataValue("acquisition date", series, -1, warnings,
                     () -> metadataStore.getImageAcquisitionDate(seriesIndex));
@@ -645,15 +652,126 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         return scene;
     }
 
-    private int defaultChannelColor(int channel) {
-        return switch (channel % 6) {
-            case 0 -> 0x00ff0000;
-            case 1 -> 0x0000ff00;
-            case 2 -> 0x000000ff;
-            case 3 -> 0x00ffff00;
-            case 4 -> 0x00ff00ff;
-            default -> 0x0000ffff;
+    String channelDisplayName(int channel, String channelName, String fluor, Length excitation, Length emission) {
+        String name = firstNonBlank(channelName, fluor);
+        if (name == null) {
+            name = "Channel " + (channel + 1);
+        }
+        Double emissionNm = toNanometers(emission);
+        Double excitationNm = toNanometers(excitation);
+        if (!containsWavelength(name) && emissionNm != null) {
+            name += " (" + Math.round(emissionNm) + " nm emission)";
+        } else if (!containsWavelength(name) && excitationNm != null) {
+            name += " (" + Math.round(excitationNm) + " nm excitation)";
+        }
+        return name;
+    }
+
+    int channelDisplayColor(int channel, String channelName, String fluor, Length excitation, Length emission,
+                            ome.xml.model.primitives.Color omeColor) {
+        if (omeColor != null) {
+            int r = clampColor(omeColor.getRed());
+            int g = clampColor(omeColor.getGreen());
+            int b = clampColor(omeColor.getBlue());
+            if (r != 0 || g != 0 || b != 0) {
+                return packRgb(r, g, b);
+            }
+        }
+
+        String text = (String.valueOf(channelName) + " " + String.valueOf(fluor)).toLowerCase(Locale.ROOT);
+        Double wavelength = toNanometers(emission);
+        if (wavelength == null) {
+            wavelength = toNanometers(excitation);
+        }
+        if (wavelength == null) {
+            wavelength = parseWavelengthNm(text).orElse(null);
+        }
+
+        if (text.contains("dapi") || text.contains("hoechst") || text.contains("405") || text.contains("blue")) {
+            return packRgb(80, 140, 255);
+        }
+        if (text.contains("fitc") || text.contains("gfp") || text.contains("488") || text.contains("green")) {
+            return packRgb(0, 255, 80);
+        }
+        if (text.contains("cy3") || text.contains("tritc") || text.contains("555") || text.contains("568")
+                || text.contains("orange")) {
+            return packRgb(255, 96, 0);
+        }
+        if (text.contains("cy5") || text.contains("647") || text.contains("far red") || text.contains("far-red")
+                || text.contains("farred")) {
+            return packRgb(255, 0, 255);
+        }
+        if (wavelength != null) {
+            if (wavelength < 460) {
+                return packRgb(80, 140, 255);
+            }
+            if (wavelength < 540) {
+                return packRgb(0, 255, 80);
+            }
+            if (wavelength < 610) {
+                return packRgb(255, 96, 0);
+            }
+            if (wavelength < 635) {
+                return packRgb(255, 0, 0);
+            }
+            return packRgb(255, 0, 255);
+        }
+
+        return defaultChannelColor(channel);
+    }
+
+    int defaultChannelColor(int channel) {
+        return switch (channel % 8) {
+            case 0 -> packRgb(80, 140, 255);
+            case 1 -> packRgb(0, 255, 80);
+            case 2 -> packRgb(255, 96, 0);
+            case 3 -> packRgb(255, 0, 255);
+            case 4 -> packRgb(0, 255, 255);
+            case 5 -> packRgb(255, 255, 0);
+            case 6 -> packRgb(255, 255, 255);
+            default -> packRgb(160, 80, 255);
         };
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private boolean containsWavelength(String text) {
+        return text != null && Pattern.compile("\\b\\d{3}\\b").matcher(text).find();
+    }
+
+    private Optional<Double> parseWavelengthNm(String text) {
+        if (text == null) {
+            return Optional.empty();
+        }
+        Matcher matcher = Pattern.compile("\\b(3\\d{2}|4\\d{2}|5\\d{2}|6\\d{2}|7\\d{2})\\b").matcher(text);
+        return matcher.find() ? Optional.of(Double.parseDouble(matcher.group(1))) : Optional.empty();
+    }
+
+    private Double toNanometers(Length length) {
+        if (length == null) {
+            return null;
+        }
+        try {
+            return length.value(UNITS.NANOMETER).doubleValue();
+        } catch (Exception e) {
+            Double microns = toMicrons(length);
+            return microns == null ? null : microns * 1000.0;
+        }
+    }
+
+    private int packRgb(int r, int g, int b) {
+        return (clampColor(r) << 16) | (clampColor(g) << 8) | clampColor(b);
+    }
+
+    private int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 
     private String stageKey(CziSceneInfo scene) {
