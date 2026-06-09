@@ -19,6 +19,7 @@
 - Improved QuPath project import selection by increasing CZI Spatial Viewer server support priority for `.czi/.czis` files.
 - Improved default fluorescence/multichannel rendering by compositing non-RGB `UINT8`/`UINT16` channel planes into a stable RGB display.
 - Improved fluorescence channel display metadata by honoring OME channel colors and using fluor/wavelength-aware fallback colors, including distinct defaults for 555/red and 647/Cy5/far-red channels.
+- Toned down fallback fluorescence LUT colors so merged multichannel overlays are less likely to appear over-bright compared with acquisition/viewer defaults.
 - Added scene channel names and display colors to the exported manifest for support/debugging.
 - Reworded CZI compression diagnostics to clarify that Bio-Formats pixel reading is attempted.
 

@@ -688,33 +688,33 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
         }
 
         if (text.contains("dapi") || text.contains("hoechst") || text.contains("405") || text.contains("blue")) {
-            return packRgb(80, 140, 255);
+            return packRgb(40, 80, 220);
         }
         if (text.contains("fitc") || text.contains("gfp") || text.contains("488") || text.contains("green")) {
-            return packRgb(0, 255, 80);
+            return packRgb(0, 180, 40);
         }
         if (text.contains("cy3") || text.contains("tritc") || text.contains("555") || text.contains("568")
                 || text.contains("orange")) {
-            return packRgb(255, 96, 0);
+            return packRgb(200, 40, 0);
         }
         if (text.contains("cy5") || text.contains("647") || text.contains("far red") || text.contains("far-red")
                 || text.contains("farred")) {
-            return packRgb(255, 0, 255);
+            return packRgb(160, 0, 120);
         }
         if (wavelength != null) {
             if (wavelength < 460) {
-                return packRgb(80, 140, 255);
+                return packRgb(40, 80, 220);
             }
             if (wavelength < 540) {
-                return packRgb(0, 255, 80);
+                return packRgb(0, 180, 40);
             }
             if (wavelength < 610) {
-                return packRgb(255, 96, 0);
+                return packRgb(200, 40, 0);
             }
             if (wavelength < 635) {
-                return packRgb(255, 0, 0);
+                return packRgb(180, 0, 0);
             }
-            return packRgb(255, 0, 255);
+            return packRgb(160, 0, 120);
         }
 
         return defaultChannelColor(channel);
@@ -722,14 +722,14 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
     int defaultChannelColor(int channel) {
         return switch (channel % 8) {
-            case 0 -> packRgb(80, 140, 255);
-            case 1 -> packRgb(0, 255, 80);
-            case 2 -> packRgb(255, 96, 0);
-            case 3 -> packRgb(255, 0, 255);
-            case 4 -> packRgb(0, 255, 255);
-            case 5 -> packRgb(255, 255, 0);
-            case 6 -> packRgb(255, 255, 255);
-            default -> packRgb(160, 80, 255);
+            case 0 -> packRgb(40, 80, 220);
+            case 1 -> packRgb(0, 180, 40);
+            case 2 -> packRgb(200, 40, 0);
+            case 3 -> packRgb(160, 0, 120);
+            case 4 -> packRgb(0, 150, 150);
+            case 5 -> packRgb(160, 120, 0);
+            case 6 -> packRgb(120, 120, 120);
+            default -> packRgb(120, 60, 180);
         };
     }
 

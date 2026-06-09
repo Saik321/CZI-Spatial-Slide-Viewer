@@ -78,8 +78,8 @@ class BioFormatsCziReaderBackendTest {
         int red555 = backend.channelDisplayColor(1, "Alexa Fluor 555", null, null, null, null);
         int farRed647 = backend.channelDisplayColor(2, "Alexa Fluor 647", null, null, null, null);
 
-        assertEquals(0xff6000, red555);
-        assertEquals(0xff00ff, farRed647);
+        assertEquals(0xc82800, red555);
+        assertEquals(0xa00078, farRed647);
         assertNotEquals(red555, farRed647);
     }
 
@@ -89,7 +89,7 @@ class BioFormatsCziReaderBackendTest {
 
         int farRed = backend.channelDisplayColor(3, "Channel 4", "Cy5", null, null, null);
 
-        assertEquals(0xff00ff, farRed);
+        assertEquals(0xa00078, farRed);
     }
 
     private CziSceneInfo spatialScene(int series, int width, int height) {
