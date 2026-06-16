@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultichannelImageServerTest {
 
@@ -51,5 +52,29 @@ class MultichannelImageServerTest {
 
         assertEquals(5, image.getRaster().getNumBands());
         assertEquals(DataBuffer.TYPE_USHORT, image.getRaster().getDataBuffer().getDataType());
+    }
+
+    @Test
+    void rgbBrightfieldMetadataUsesStandardQuPathRgbDisplayModel() {
+        CziSceneInfo scene = new CziSceneInfo(0, 0, 128, 64);
+        scene.setStageXMicrons(0.0);
+        scene.setStageYMicrons(0.0);
+        scene.setPixelSizeXMicrons(0.5);
+        scene.setPixelSizeYMicrons(0.5);
+        scene.setRgb(true);
+        scene.setPixelType("uint16");
+        scene.setChannelCount(3);
+
+        CziSpatialMetadata metadata = new CziSpatialMetadata(Path.of("data", "example_validation.czi"), List.of(scene));
+        metadata.setRgb(true);
+        metadata.setPixelType("uint8");
+        metadata.setChannelCount(3);
+        metadata.setGlobalWidth(128);
+        metadata.setGlobalHeight(64);
+
+        var imageMetadata = CziSpatialImageServer.buildImageServerMetadata(URI.create("file:///example_validation.czi"), metadata);
+
+        assertTrue(imageMetadata.isRGB());
+        assertEquals(PixelType.UINT8, imageMetadata.getPixelType());
     }
 }

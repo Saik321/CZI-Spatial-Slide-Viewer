@@ -574,8 +574,14 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
 
         CziSceneInfo representative = metadata.getScenes().get(0);
         metadata.setRgb(representative.isRgb());
-        metadata.setPixelType(representative.getPixelType());
-        metadata.setChannelCount(Math.max(1, representative.getChannelCount()));
+        if (representative.isRgb()) {
+            metadata.setPixelType("uint8");
+            metadata.setChannelCount(3);
+            warnings.add("RGB brightfield display metadata normalized to QuPath RGB/UINT8 to avoid quantitative display ranges for color images.");
+        } else {
+            metadata.setPixelType(representative.getPixelType());
+            metadata.setChannelCount(Math.max(1, representative.getChannelCount()));
+        }
         metadata.getChannelNames().clear();
         metadata.getChannelColors().clear();
         if (representative.getChannelNames().isEmpty()) {
@@ -653,7 +659,7 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
     }
 
     String channelDisplayName(int channel, String channelName, String fluor, Length excitation, Length emission) {
-        String name = firstNonBlank(channelName, fluor);
+        String name = isGenericChannelName(channelName) ? firstNonBlank(fluor, channelName) : firstNonBlank(channelName, fluor);
         if (name == null) {
             name = "Channel " + (channel + 1);
         }
@@ -665,6 +671,16 @@ public class BioFormatsCziReaderBackend implements CziReaderBackend {
             name += " (" + Math.round(excitationNm) + " nm excitation)";
         }
         return name;
+    }
+
+    private boolean isGenericChannelName(String channelName) {
+        if (channelName == null || channelName.isBlank()) {
+            return true;
+        }
+        String normalized = channelName.trim().toLowerCase(Locale.ROOT);
+        return normalized.matches("channel\\s*\\d+")
+                || normalized.matches("ch\\s*\\d+")
+                || normalized.matches("c\\s*\\d+");
     }
 
     int channelDisplayColor(int channel, String channelName, String fluor, Length excitation, Length emission,

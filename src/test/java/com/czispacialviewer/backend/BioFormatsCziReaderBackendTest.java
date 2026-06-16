@@ -92,6 +92,24 @@ class BioFormatsCziReaderBackendTest {
         assertEquals(0xa00078, farRed);
     }
 
+    @Test
+    void fluorMetadataRenamesGenericChannelNames() {
+        BioFormatsCziReaderBackend backend = new BioFormatsCziReaderBackend();
+
+        String name = backend.channelDisplayName(3, "Channel 4", "Cy5", null, null);
+
+        assertEquals("Cy5", name);
+    }
+
+    @Test
+    void nativeNonGenericChannelNamesArePreserved() {
+        BioFormatsCziReaderBackend backend = new BioFormatsCziReaderBackend();
+
+        String name = backend.channelDisplayName(1, "Far red marker", "Cy5", null, null);
+
+        assertEquals("Far red marker", name);
+    }
+
     private CziSceneInfo spatialScene(int series, int width, int height) {
         CziSceneInfo scene = new CziSceneInfo(series, series, width, height);
         scene.setStageXMicrons(10.0);

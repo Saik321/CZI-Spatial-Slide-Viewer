@@ -4,6 +4,7 @@ import com.czispacialviewer.backend.BioFormatsCziReaderBackend;
 import com.czispacialviewer.backend.CziReaderBackend;
 import com.czispacialviewer.metadata.CziPyramidLevel;
 import com.czispacialviewer.metadata.CziSceneInfo;
+import com.czispacialviewer.metadata.CziSeriesInfo;
 import com.czispacialviewer.metadata.CziSpatialMetadata;
 import com.czispacialviewer.util.BandedImageTools;
 import com.czispacialviewer.util.BufferedImageLruCache;
@@ -29,7 +30,10 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
 
@@ -39,6 +43,7 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
     private final CziReaderBackend backend;
     private final CziSpatialMetadata metadata;
     private final ImageServerMetadata originalMetadata;
+    private final Map<String, CziSeriesInfo> associatedImages;
     private final CziSpatialViewerSettings settings = CziSpatialViewerSettings.getDefault();
     private final BufferedImageLruCache tileCache;
     private final PerformanceStats performanceStats = new PerformanceStats();
@@ -60,6 +65,7 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
             throw new IOException("No spatial CZI scenes with usable stage coordinates were found in " + path + ".");
         }
         this.originalMetadata = buildImageServerMetadata(uri, metadata);
+        this.associatedImages = buildAssociatedImages(metadata);
         this.tileCache = new BufferedImageLruCache(settings.getMaxCacheBytes());
     }
 
@@ -115,6 +121,45 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
     @Override
     public ImageServerMetadata getOriginalMetadata() {
         return originalMetadata;
+    }
+
+    @Override
+    public List<String> getAssociatedImageList() {
+        return new ArrayList<>(associatedImages.keySet());
+    }
+
+    @Override
+    public BufferedImage getAssociatedImage(String name) {
+        CziSeriesInfo series = associatedImages.get(name);
+        if (series == null || !series.isReadable()) {
+            return null;
+        }
+        try {
+            CziSceneInfo readScene = associatedSeriesToScene(series);
+            int maxDimension = Math.max(256, Math.min(2048, settings.getMaxPreviewDimension()));
+            double downsample = Math.max(1.0, Math.max(series.getWidth(), series.getHeight()) / (double) maxDimension);
+            long nativePixels = (long) series.getWidth() * (long) series.getHeight();
+            if (nativePixels > 16_000_000L && readScene.getPyramidLevels().size() <= 1) {
+                return associatedPlaceholder(series, "too large for safe thumbnail read");
+            }
+            BufferedImage image = backend.readRegion(metadata.getInputPath(), readScene, 0, 0,
+                    series.getWidth(), series.getHeight(), downsample).getImage();
+            int targetWidth = Math.max(1, (int) Math.round(series.getWidth() / downsample));
+            int targetHeight = Math.max(1, (int) Math.round(series.getHeight() / downsample));
+            if (image.getWidth() == targetWidth && image.getHeight() == targetHeight) {
+                return image;
+            }
+            BufferedImage scaled = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = scaled.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, targetWidth, targetHeight);
+            g.drawImage(image, 0, 0, targetWidth, targetHeight, null);
+            g.dispose();
+            return scaled;
+        } catch (Exception e) {
+            return associatedPlaceholder(series, e.getMessage());
+        }
     }
 
     @Override
@@ -216,6 +261,75 @@ public class CziSpatialImageServer extends AbstractImageServer<BufferedImage> {
         }
         int dataType = toDataBufferType(metadata.getPixelType());
         return BandedImageTools.createBandedImage(width, height, metadata.getChannelCount(), dataType);
+    }
+
+    private static Map<String, CziSeriesInfo> buildAssociatedImages(CziSpatialMetadata metadata) {
+        Map<String, CziSeriesInfo> result = new LinkedHashMap<>();
+        for (CziSeriesInfo series : metadata.getNonSpatialSeries()) {
+            if (!series.isReadable()) {
+                continue;
+            }
+            String type = series.getItemType() == null ? "Associated image" : series.getItemType().replace('_', ' ');
+            String name = toTitleCase(type) + " (series " + series.getSeriesIndex() + ")";
+            if (series.getSeriesName() != null && !series.getSeriesName().isBlank()) {
+                name += " - " + series.getSeriesName();
+            }
+            String uniqueName = name;
+            int suffix = 2;
+            while (result.containsKey(uniqueName)) {
+                uniqueName = name + " " + suffix++;
+            }
+            result.put(uniqueName, series);
+        }
+        return result;
+    }
+
+    private static String toTitleCase(String text) {
+        String[] parts = text.toLowerCase(Locale.ROOT).split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String part : parts) {
+            if (part.isBlank()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return sb.length() == 0 ? "Associated Image" : sb.toString();
+    }
+
+    private static CziSceneInfo associatedSeriesToScene(CziSeriesInfo series) {
+        CziSceneInfo scene = new CziSceneInfo(series.getSeriesIndex(), series.getSeriesIndex(), series.getWidth(), series.getHeight());
+        scene.setChannelCount(series.getChannelCount());
+        scene.setZCount(series.getZCount());
+        scene.setTimepointCount(series.getTimepointCount());
+        scene.setDisplayZIndex(series.getDisplayZIndex());
+        scene.setDisplayTIndex(series.getDisplayTIndex());
+        scene.setPixelType(series.getPixelType());
+        scene.setRgb(series.isRgb());
+        scene.setInterleaved(series.isInterleaved());
+        scene.getPyramidLevels().add(new CziPyramidLevel(0, series.getWidth(), series.getHeight(), 1.0, series.getSeriesIndex()));
+        return scene;
+    }
+
+    private static BufferedImage associatedPlaceholder(CziSeriesInfo series, String reason) {
+        int width = Math.max(256, Math.min(1024, series.getWidth()));
+        int height = Math.max(128, Math.min(512, series.getHeight()));
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        g.setColor(new Color(238, 240, 244));
+        g.fillRect(0, 0, width, height);
+        g.setColor(new Color(120, 80, 40));
+        g.drawRect(0, 0, width - 1, height - 1);
+        g.setColor(Color.BLACK);
+        g.drawString("Series " + series.getSeriesIndex() + " " + series.getItemType(), 12, 24);
+        g.drawString(series.getWidth() + " x " + series.getHeight(), 12, 42);
+        if (reason != null && !reason.isBlank()) {
+            g.drawString(reason.length() > 80 ? reason.substring(0, 80) : reason, 12, 60);
+        }
+        g.dispose();
+        return image;
     }
 
     private void drawSceneRegion(Graphics2D g, BufferedImage sceneRegion, int drawX, int drawY, int drawW, int drawH) {

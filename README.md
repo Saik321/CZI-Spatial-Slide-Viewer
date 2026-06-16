@@ -12,6 +12,7 @@ This extension does not stitch or fuse scenes. It creates a virtual coordinate-c
 - Reads only requested regions from intersecting scenes.
 - Uses native pyramid levels where Bio-Formats exposes them as series.
 - Detects and reports spatial scenes separately from skipped/non-spatial series such as label, macro, thumbnail, or attachment-like images.
+- Exposes readable non-spatial CZI series such as labels, macro images, and thumbnails as QuPath associated images, so slide identity images are easier to inspect.
 - Exports manifest JSON, debug report, layout preview, contact sheet, HALO validation report, and support bundle.
 
 ## Current Backend
@@ -112,6 +113,8 @@ The layout preview is the strict spatial canvas: it preserves coordinate-derived
 - Settings are editable and persisted locally using Java preferences.
 - Thread safety uses a bounded Bio-Formats reader pool for concurrent tile requests.
 - Multichannel fluorescence display declares `rgb(false)` metadata and preserves `UINT8`/`UINT16` channel bands where Bio-Formats exposes them. OME channel colors are used when available, with conservative fluor/wavelength-aware fallback colors for common channels such as DAPI/405, FITC/488, 555/Cy3/TRITC, and 647/Cy5/far-red.
+- Native Bio-Formats/OME channel names are preserved when they are meaningful. Generic names such as `Channel 1` may be upgraded from fluor or wavelength metadata; if Bio-Formats exposes no useful channel metadata, the viewer falls back to stable `Channel N` names.
+- RGB brightfield images are advertised to QuPath as standard RGB/UINT8 display images even if the underlying CZI metadata reports a higher core pixel type, avoiding initial brightness/depth ranges that make color images appear black until manually rescaled.
 - Z-stack CZI files display the middle Z plane by default and report the Z count in manifests/support bundles. Full Z navigation and lazy Z projection are future work.
 - OpenSlide/libCZI backends are placeholders.
 
